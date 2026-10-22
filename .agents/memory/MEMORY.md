@@ -1,2 +1,3 @@
 - [Image-only recap policy](image-only-recaps.md) — leaderboard images are not a trusted source of player stats; require explicit text rows.
 - [Club Agent policy](club-agent-policy.md) — branding, tiers, flexible attendance/vacation protections, and workflow-first guidance rather than a command catalog.
+- [Public launch-panel safety](public-launch-panel-safety.md) — prefer a blocked move over duplicate panels; reconcile uncertain Discord publication before retrying.

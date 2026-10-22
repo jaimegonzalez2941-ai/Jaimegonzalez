@@ -201,6 +201,7 @@ REFERENCE = (
         ("/assistant task edit", "Reassign unfinished work/change deadlines"),
         ("/assistant task complete", "Record completion and outcome"))),
     ("Manager settings", "manager", (
+        ("/start_panel", "Post/update the public Start Here button in a chosen channel"),
         ("/scout setup", "Configure staff access and trusted recap source"),
         ("/scout stage_role", "Map each development tier to a safe role"),
         ("/promotion policy", "Adjust attendance requirements"))),

@@ -17,13 +17,15 @@ async def check(settings: Settings):
     try:
         await bot.db.open()
         from .views import DocketView
+        from .start_panel import StartPanel
         bot.register_commands()
         commands = bot.tree.get_commands()
         for command in commands:
             command.to_dict(bot.tree)
         assert DocketView().is_persistent()
+        assert StartPanel().is_persistent()
         logging.getLogger(__name__).info(
-            "Startup check passed: database, %d top-level slash commands/groups, persistent docket.",
+            "Startup check passed: database, %d top-level slash commands/groups, persistent docket and Start Here.",
             len(commands),
         )
     finally:

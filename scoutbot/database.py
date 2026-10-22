@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS dockets (
     guild_id TEXT NOT NULL, channel_id TEXT NOT NULL, message_id TEXT NOT NULL,
     PRIMARY KEY(guild_id,channel_id)
 );
+CREATE TABLE IF NOT EXISTS start_panels (
+    guild_id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, message_id TEXT,
+    marker TEXT NOT NULL, created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT NOT NULL,
     actor_id TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL,
@@ -84,6 +88,8 @@ class Database(ClubStore, AssistantStore):
         self.lock = asyncio.Lock()
         self.connection: aiosqlite.Connection | None = None
         self.workspace_views = set()
+        # Keep Discord publication serialized separately from SQL transactions.
+        self.start_panel_lock = asyncio.Lock()
 
     async def open(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +176,23 @@ class Database(ClubStore, AssistantStore):
 
     async def settings(self, guild: int) -> dict | None:
         return await self.one("SELECT * FROM guild_settings WHERE guild_id=?", (str(guild),))
+
+    async def start_panel(self, guild):
+        return await self.one("SELECT * FROM start_panels WHERE guild_id=?", (str(guild),))
+
+    async def reserve_start_panel(self, guild, channel):
+        async with self.transaction() as conn:
+            await conn.execute(
+                """INSERT INTO start_panels VALUES (?,?,NULL,?,?)
+                ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,
+                message_id=NULL, marker=excluded.marker, created_at=excluded.created_at""",
+                (str(guild), str(channel), uuid.uuid4().hex, utcnow()))
+        return await self.start_panel(guild)
+
+    async def save_start_panel(self, guild, message):
+        async with self.transaction() as conn:
+            await conn.execute("UPDATE start_panels SET message_id=? WHERE guild_id=?",
+                               (str(message), str(guild)))
 
     async def configure(self, guild: int, actor: int, **values):
         async with self.transaction() as conn:

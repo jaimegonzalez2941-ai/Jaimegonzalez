@@ -18,6 +18,23 @@ Each screen shows a next command and short guidance. Type that command separatel
 
 Only routes you can currently access are shown. Every continuation checks the original viewer and server; staff and manager access is checked again before restricted guidance is shown. **Command reference** remains in the menu for categorized lookups, and staff can still use `/scout help`. The menu expires after ten minutes or a bot restart; run `/club` again to reopen it.
 
+**Optional welcome-channel button:** A member with **Manage Server** can run
+`/start_panel channel:#welcome` (or choose a help text channel). This explicitly creates
+one generic **Club Agent · Start Here** message per server; nothing is posted automatically.
+The bot needs **View Channel**, **Send Messages**, **Embed Links**, and **Read Message History**
+there, and the manager must be able to view the channel. No Manage Messages permission is needed.
+The public message contains no staff, player, RSVP, or leave records and sends no mentions.
+Anyone clicking **Start Here** gets their own private `/club` guide with their current access,
+never the posting manager's access. The public button survives bot restarts; private menus
+still expire as described above. Click the public button again to open a fresh menu.
+
+Repeat `/start_panel` in the same channel to update the saved message, or replace it if deleted.
+Choosing another channel removes the old panel before creating the new one. If access to the old
+channel/message is denied, the move stops: restore access first rather than posting duplicates.
+A deleted old channel can be replaced. After an unconfirmed Discord send or a restart during
+publication, retry in the same channel: the bot checks its saved publication marker in channel
+history before sending another message. History access is required for this recovery.
+
 The manager checklist reads current settings and checks cached role/channel existence. A saved setting or a found resource is **not proof** of channel privacy, current permissions, trusted-source authenticity, gateway intents or successful recap/notification delivery. Follow the suggested setup/status commands for those checks. Reminders are optional and never a prerequisite to starting.
 
 ## Start the bot

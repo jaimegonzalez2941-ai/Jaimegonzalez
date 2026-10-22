@@ -12,6 +12,7 @@ from .schedule_commands import ScheduleCommands
 from .attendance_commands import AttendanceCommands, PromotionCommands
 from .assistant_commands import AssistantCommands, DevelopmentCommands
 from .club_ui import club_help
+from .start_panel import StartPanel, start_panel
 from .branding import apply_branding
 from .config import Settings
 from .database import Database
@@ -52,12 +53,13 @@ class ScoutBot(commands.Bot):
     def register_commands(self):
         for command in (ScoutCommands(self), AvailabilityCommands(self), ScheduleCommands(self),
                         AttendanceCommands(self), PromotionCommands(self), AssistantCommands(self),
-                        DevelopmentCommands(self), club_help):
+                        DevelopmentCommands(self), club_help, start_panel):
             self.tree.add_command(command)
 
     async def setup_hook(self):
         await self.db.open()
         self.add_view(DocketView())
+        self.add_view(StartPanel())
         self.register_commands()
         if self.settings.test_guild:
             guild = discord.Object(id=self.settings.test_guild)

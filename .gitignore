@@ -67,5 +67,8 @@ __pycache__/
 *.db
 *.db-wal
 *.db-shm
+*.db.lock
+*.sqlite3
+*.sqlite3.lock
 .env
 *.log

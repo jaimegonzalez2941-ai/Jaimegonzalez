@@ -43,6 +43,18 @@ async def staff_assignee(interaction, member):
     return current
 
 
+def permission_entry(target):
+    """Label a permission target without mentions or assuming unresolved membership."""
+    if isinstance(target, discord.Role):
+        kind, name = "role", target.name
+    elif isinstance(target, discord.Member):
+        kind, name = "member", target.display_name
+    else:
+        return f"unresolved member entry (ID {target.id})"
+    name = discord.utils.escape_markdown(discord.utils.escape_mentions(" ".join(str(name).split())[:100]))
+    return f'{kind} "{name}" (ID {target.id})'
+
+
 def private_channel(channel: discord.TextChannel, staff_role: discord.Role):
     """Fail closed when explicit overwrites allow a non-staff audience."""
     if channel.overwrites_for(channel.guild.default_role).view_channel is not False:
@@ -71,9 +83,13 @@ def private_channel(channel: discord.TextChannel, staff_role: discord.Role):
             allowed = False
         if not allowed:
             raise AccessDenied(
-                "That channel explicitly permits a viewer the bot cannot verify as staff. "
-                "Remove View Channel overrides for non-staff users, including former or unresolved "
-                "members, before saving this staff channel."
+                f"Staff-channel check blocked by {permission_entry(target)}.\n"
+                "View Channel is explicitly set to Allow for this entry, but staff access cannot be verified.\n"
+                f"Selected staff role: {permission_entry(staff_role)}.\n"
+                "Review this entry in the selected staff channel's Permissions. For non-staff viewers, "
+                "including former or unresolved members, remove this override or set View Channel to Neutral. "
+                "If this is intended staff access, verify the staff role selected in /scout setup instead. "
+                "No permissions have been changed."
             )
     permissions = channel.permissions_for(me)
     if not all((permissions.view_channel, permissions.send_messages, permissions.embed_links)):

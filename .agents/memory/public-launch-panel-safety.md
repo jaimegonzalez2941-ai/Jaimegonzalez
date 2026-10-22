@@ -32,3 +32,12 @@ uncached overwrite target was treated like a `Member`.
 
 **How to apply:** Handle overwrite targets by known Discord type. Fail closed on unresolved
 viewer grants and tell the manager to remove or verify the stale member override.
+
+Permission-validation failures should identify the blocked permission entry and the selected
+staff role with bounded, mention-safe labels, not just say that an unspecified viewer is unsafe.
+
+**Why:** Repeated mobile screenshots did not expose the relevant permission, leaving the manager
+unable to identify the rule from a generic error.
+
+**How to apply:** Preserve fail-closed authorization while making private validation messages
+specific enough to act on; never infer a viewer's identity or safety from a role name alone.

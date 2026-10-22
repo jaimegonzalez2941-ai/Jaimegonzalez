@@ -56,6 +56,20 @@ history before sending another message. History access is required for this reco
 
 The manager checklist reads current settings and checks cached role/channel existence. A saved setting or a found resource is **not proof** of channel privacy, current permissions, trusted-source authenticity, gateway intents or successful recap/notification delivery. Follow the suggested setup/status commands for those checks. Reminders are optional and never a prerequisite to starting.
 
+## Error messages and safe recovery
+
+All slash commands, Club Agent buttons and evaluation forms share private error handling. Reports
+identify the command when available, explain the problem and suggest a next step. Permission checks
+remain enforced: staff-channel failures name the blocked role/member entry (or an unresolved ID)
+and the selected staff role without sending mentions.
+
+Input mistakes, missing permissions, cooldowns, stale command lists, unavailable Discord items and
+expired interactions have distinct guidance. Unexpected failures show a reference for the bot
+operator rather than private exception details. An error is not proof that an earlier write failed:
+check existing records, roles or public messages before retrying an uncertain action. Error handling
+never automatically repeats an action or changes permissions. If Discord has expired the reply
+token, the bot logs that delivery failure without trying to post a public error.
+
 ## Start the bot
 
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.

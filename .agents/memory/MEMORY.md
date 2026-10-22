@@ -1,3 +1,4 @@
 - [Image-only recap policy](image-only-recaps.md) — leaderboard images are not a trusted source of player stats; require explicit text rows.
 - [Club Agent policy](club-agent-policy.md) — branding, tiers, flexible attendance/vacation protections, and workflow-first guidance rather than a command catalog.
 - [Public launch-panel safety](public-launch-panel-safety.md) — reconcile uncertain publication, avoid duplicate panels, and verify live command sync before permission debugging.
+- [Interaction errors](interaction-error-policy.md) — actionable private errors across commands and controls; uncertain writes are not failed writes.

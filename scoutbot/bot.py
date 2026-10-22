@@ -27,13 +27,7 @@ logger = logging.getLogger(__name__)
 
 class CommandTree(app_commands.CommandTree):
     async def on_error(self, interaction, error):
-        if isinstance(error, app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"Please wait {error.retry_after:.0f} seconds before trying that command again.",
-                ephemeral=True,
-            )
-            return
-        await respond_error(interaction, getattr(error, "original", error))
+        await respond_error(interaction, error)
 
 
 class ScoutBot(commands.Bot):

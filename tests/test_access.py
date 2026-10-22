@@ -10,6 +10,7 @@ from scoutbot.access import AccessDenied, private_channel
 def role(identifier, permissions=None):
     result = Mock(spec=discord.Role)
     result.id = identifier
+    result.name = f"Role {identifier}"
     result.permissions = permissions or discord.Permissions.none()
     return result
 
@@ -17,6 +18,7 @@ def role(identifier, permissions=None):
 def member(identifier, *, manager=False, roles=()):
     result = Mock(spec=discord.Member)
     result.id = identifier
+    result.display_name = f"Member {identifier}"
     result.guild_permissions = discord.Permissions(manage_guild=manager)
     result.roles = list(roles)
     return result
@@ -56,15 +58,31 @@ class PrivateChannelTests(unittest.TestCase):
     def test_rejects_unresolved_member_overwrite_without_assuming_staff_access(self):
         former_member = discord.Object(id=102)
         self.channel.overwrites[former_member] = discord.PermissionOverwrite(view_channel=True)
-        with self.assertRaisesRegex(AccessDenied, "former or unresolved members"):
+        with self.assertRaises(AccessDenied) as caught:
             private_channel(self.channel, self.staff)
+        self.assertIn("former or unresolved members", str(caught.exception))
+        self.assertIn("unresolved member entry (ID 102)", str(caught.exception))
         self.channel.permissions_for.assert_not_called()
 
     def test_rejects_a_known_nonstaff_member_with_view_access(self):
         other = member(103)
         self.channel.overwrites[other] = discord.PermissionOverwrite(view_channel=True)
-        with self.assertRaisesRegex(AccessDenied, "viewer the bot cannot verify as staff"):
+        with self.assertRaises(AccessDenied) as caught:
             private_channel(self.channel, self.staff)
+        self.assertIn('member "Member 103" (ID 103)', str(caught.exception))
+        self.assertIn('Selected staff role: role "Role 20" (ID 20)', str(caught.exception))
+
+    def test_nonstaff_role_diagnostic_escapes_names_and_is_bounded(self):
+        other = role(104)
+        other.name = "@everyone **Other**\nRole" + "*" * 4000
+        self.channel.overwrites[other] = discord.PermissionOverwrite(view_channel=True)
+        with self.assertRaises(AccessDenied) as caught:
+            private_channel(self.channel, self.staff)
+        message = str(caught.exception)
+        self.assertIn("(ID 104)", message)
+        self.assertNotIn("@everyone", message)
+        self.assertNotIn("**Other**", message)
+        self.assertLess(len(message), 1500)
 
     def test_requires_an_explicit_deny_for_everyone(self):
         self.channel.overwrites_for.return_value = discord.PermissionOverwrite()

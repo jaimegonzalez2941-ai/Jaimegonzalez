@@ -1,8 +1,6 @@
 """Stateful private forms and restart-safe docket controls."""
 
-import logging
 import json
-import uuid
 
 import discord
 
@@ -10,28 +8,7 @@ from .access import AccessDenied, private_channel, staff_access
 from .domain import POSITIONS
 from .rubric import CATEGORIES, LABELS, OBSERVABLES, ANCHORS, category_score, coverage
 from . import presentation as ui
-
-logger = logging.getLogger(__name__)
-
-
-async def respond_error(interaction: discord.Interaction, error: Exception):
-    if isinstance(error, (ValueError, AccessDenied)):
-        message = str(error)
-    elif isinstance(error, discord.Forbidden):
-        message = "Discord denied that action. Check the bot's channel permissions and role order."
-    elif isinstance(error, discord.NotFound):
-        message = "That Discord message, channel, or member is no longer available."
-    elif isinstance(error, discord.HTTPException):
-        message = "Discord could not complete the request. Please try again shortly."
-    else:
-        reference = uuid.uuid4().hex[:8]
-        logger.exception("Unhandled interaction error reference=%s", reference,
-                         exc_info=(type(error), error, error.__traceback__))
-        message = f"Something went wrong. No success is being assumed. Reference: {reference}"
-    if interaction.response.is_done():
-        await interaction.followup.send(message, ephemeral=True)
-    else:
-        await interaction.response.send_message(message, ephemeral=True)
+from .errors import respond_error
 
 
 class SecureView(discord.ui.View):

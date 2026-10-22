@@ -107,7 +107,9 @@ async def private_channel(channel: discord.TextChannel, staff_role: discord.Role
             continue
         if (
             isinstance(target, discord.Object)
-            and target.type in (discord.User, discord.Member)
+            # GuildChannel.overwrites uses the abc.User protocol, not the
+            # concrete User class, for uncached member permission entries.
+            and target.type in (discord.abc.User, discord.User, discord.Member)
             and target.id != me.id
         ):
             target = await resolve_permission_member(channel.guild, target, deadline)

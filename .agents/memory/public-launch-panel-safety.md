@@ -35,6 +35,16 @@ legitimate staff: verify that individual against Discord within a bounded reques
 deciding. A missing role cannot be resolved as a member. Keep unknown or unauthorized viewers
 blocked, and acknowledge the interaction before any network verification.
 
+Discord's overwrite API uses the generic `discord.abc.User` protocol as the unresolved member
+type, not necessarily the concrete `discord.User` class.
+
+**Why:** Checking only concrete User/Member types silently skipped verification for actual
+Discord channel payloads, even though manually constructed test objects passed.
+
+**How to apply:** Include the protocol type explicitly; do not use `issubclass` against this
+data-bearing protocol. Exercise real SDK channel payload parsing in regression tests rather than
+relying only on hand-built overwrite objects.
+
 Club Agent's own Discord-managed bot role is a safe viewer only when authoritative Discord role
 tags identify Club Agent in the same server.
 

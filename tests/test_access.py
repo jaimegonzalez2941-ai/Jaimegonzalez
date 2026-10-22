@@ -127,6 +127,42 @@ class PrivateChannelTests(unittest.IsolatedAsyncioTestCase):
             await private_channel(self.channel, self.staff)
         self.channel.permissions_for.assert_not_called()
 
+    def sdk_uncached_viewer(self):
+        """Use discord.py's real payload parser and overwrite property."""
+        self.guild.get_member = Mock(return_value=None)
+        self.guild.get_role = Mock(return_value=None)
+        channel = discord.TextChannel(
+            state=Mock(), guild=self.guild,
+            data={
+                "id": "44", "name": "staff", "type": 0, "position": 0,
+                "permission_overwrites": [{
+                    "id": "102", "type": 1,
+                    "allow": str(discord.Permissions(view_channel=True).value),
+                    "deny": "0",
+                }],
+            },
+        )
+        entries = channel.overwrites
+        target = next(iter(entries))
+        self.assertIsInstance(target, discord.Object)
+        self.assertIs(target.type, discord.abc.User)
+        self.channel.overwrites.update(entries)
+
+    async def test_real_sdk_uncached_staff_overwrite_is_resolved(self):
+        self.sdk_uncached_viewer()
+        self.guild.fetch_member.return_value = member(102, roles=(self.staff,))
+        await private_channel(self.channel, self.staff)
+        self.guild.fetch_member.assert_awaited_once_with(102)
+        self.channel.permissions_for.assert_called_once_with(self.bot)
+
+    async def test_real_sdk_uncached_nonstaff_still_rejected_by_identity(self):
+        self.sdk_uncached_viewer()
+        self.guild.fetch_member.return_value = member(102)
+        with self.assertRaisesRegex(AccessDenied, 'member "Member 102"'):
+            await private_channel(self.channel, self.staff)
+        self.guild.fetch_member.assert_awaited_once_with(102)
+        self.channel.permissions_for.assert_not_called()
+
     async def test_departed_member_is_reported_as_stale(self):
         self.channel.overwrites[discord.Object(id=102, type=discord.User)] = (
             discord.PermissionOverwrite(view_channel=True))

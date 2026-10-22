@@ -1,5 +1,6 @@
 from pathlib import Path
 import unittest
+from unittest.mock import AsyncMock
 
 import discord
 
@@ -12,6 +13,19 @@ import json
 
 
 class DiscordContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_periodic_worker_continues_after_one_maintenance_step_fails(self):
+        bot = ScoutBot(Settings(Path(":memory:"), None, False, "INFO"))
+        failed = AsyncMock(side_effect=RuntimeError("temporary maintenance failure"))
+        succeeded = AsyncMock()
+
+        with self.assertLogs("scoutbot.bot", level="ERROR"):
+            await bot._run_worker_step("failing step", failed)
+        await bot._run_worker_step("next step", succeeded)
+
+        failed.assert_awaited_once()
+        succeeded.assert_awaited_once()
+        await bot.close()
+
     async def test_commands_serialize_and_docket_is_persistent(self):
         bot = ScoutBot(Settings(Path(":memory:"), None, True, "INFO"))
         group = ScoutCommands(bot)

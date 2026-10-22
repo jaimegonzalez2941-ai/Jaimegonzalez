@@ -28,6 +28,11 @@ import { cn } from '@/lib/utils';
 
 const GUILD_KEY = 'club-agent.guild';
 
+function retryRead(failureCount: number, error: unknown) {
+  const status = errorStatus(error);
+  return failureCount < 2 && (status === undefined || status === 408 || status === 429 || status >= 500);
+}
+
 function ServiceDown({ title, error, onRetry }: { title: string; error: unknown; onRetry: () => void }) {
   const st = errorStatus(error);
   return (
@@ -126,7 +131,14 @@ function Gate() {
   const params = useParams<{ screen?: string }>();
   const screen = params.screen && SCREEN_KEYS.includes(params.screen) ? params.screen : 'overview';
   const qc = useQueryClient();
-  const access = useGetClubAccess({ query: { queryKey: getGetClubAccessQueryKey(), retry: false } });
+  const access = useGetClubAccess({
+    query: {
+      queryKey: getGetClubAccessQueryKey(),
+      retry: retryRead,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    },
+  });
   const servers = useMemo(() => access.data?.servers ?? [], [access.data]);
   const [guild, setGuildState] = useState<string>(() => localStorage.getItem(GUILD_KEY) ?? '');
   const valid = servers.find((s) => s.id === guild) ?? servers[0];
@@ -193,7 +205,14 @@ function Workspace({ guild, screen, onAuthLost }: { guild: string; screen: strin
   }), [guild, screen, page, search, status, snap, evidence]);
 
   const ws = useGetClubWorkspace(params, {
-    query: { queryKey: getGetClubWorkspaceQueryKey(params), enabled: !!guild, placeholderData: keepPreviousData, retry: false },
+    query: {
+      queryKey: getGetClubWorkspaceQueryKey(params),
+      enabled: !!guild,
+      placeholderData: keepPreviousData,
+      retry: retryRead,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    },
   });
   const data = ws.data;
 

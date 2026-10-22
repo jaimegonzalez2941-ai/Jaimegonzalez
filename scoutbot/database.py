@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import fcntl
 import json
+import logging
 import os
 import time
 import threading
@@ -20,6 +21,7 @@ from .club_store import ClubStore, CLUB_SCHEMA
 from .assistant_store import AssistantStore, ASSISTANT_SCHEMA
 
 
+logger = logging.getLogger(__name__)
 GUIDE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 CURRENT_SCHEMA_VERSION = 4
 
@@ -218,12 +220,19 @@ class Database(ClubStore, AssistantStore):
             raise
 
     async def close(self):
-        for view in tuple(self.workspace_views):
-            await view.on_timeout()
         try:
-            if self.connection:
-                await self.connection.close()
-                self.connection = None
+            try:
+                for view in tuple(self.workspace_views):
+                    try:
+                        await view.on_timeout()
+                    except Exception:
+                        logger.exception("A staff workspace view failed to close cleanly.")
+                    finally:
+                        self.workspace_views.discard(view)
+            finally:
+                connection, self.connection = self.connection, None
+                if connection:
+                    await connection.close()
         finally:
             if self._process_lock:
                 self._process_lock.release()

@@ -94,6 +94,21 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.db.open()
         self.assertEqual(len(await self.db.history(1, 10)), 1)
 
+    async def test_shutdown_closes_database_and_releases_lock_if_view_cleanup_fails(self):
+        class BrokenView:
+            async def on_timeout(self):
+                raise RuntimeError("simulated view cleanup failure")
+
+        self.db.workspace_views.add(BrokenView())
+        with self.assertLogs("scoutbot.database", level="ERROR"):
+            await self.db.close()
+
+        self.assertIsNone(self.db.connection)
+        self.assertIsNone(self.db._process_lock)
+        self.assertFalse(self.db.workspace_views)
+        await self.db.open()
+        self.assertIsNotNone(self.db.connection)
+
     async def test_sql_like_handles_are_data_not_queries(self):
         await self.db.link(1, 20, "Robert'); DROP TABLE evaluations;--", 10)
         await self.save_evaluation()

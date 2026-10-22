@@ -2,6 +2,9 @@
 
 import logging
 
+import asyncio
+from collections.abc import Awaitable, Callable
+
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -73,9 +76,15 @@ class ScoutBot(commands.Bot):
 
     @tasks.loop(seconds=60)
     async def notification_worker(self):
-        await self.db.cleanup_guide_checkpoints()
-        await self.web_bridge.cleanup()
-        await deliver_due_notifications(self)
+        await self._run_worker_step("guide checkpoint cleanup", self.db.cleanup_guide_checkpoints)
+        await self._run_worker_step("website bridge cleanup", self.web_bridge.cleanup)
+        await self._run_worker_step("scheduled notifications", lambda: deliver_due_notifications(self))
+
+    async def _run_worker_step(self, name: str, operation: Callable[[], Awaitable[object]]) -> None:
+        try:
+            await operation()
+        except Exception:
+            logger.exception("Scheduled worker step failed: %s", name)
 
     @notification_worker.before_loop
     async def wait_for_notification_ready(self):
@@ -83,12 +92,26 @@ class ScoutBot(commands.Bot):
 
     async def close(self):
         try:
-            await self.web_bridge.close()
-            if self.notification_worker.is_running():
-                self.notification_worker.cancel()
-            await super().close()
+            try:
+                await self.web_bridge.close()
+            except Exception:
+                logger.exception("The website bridge did not close cleanly.")
         finally:
-            await self.db.close()
+            try:
+                worker = self.notification_worker.get_task()
+                if worker and not worker.done():
+                    self.notification_worker.cancel()
+                    try:
+                        await worker
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        logger.exception("The scheduled worker failed while shutting down.")
+            finally:
+                try:
+                    await super().close()
+                finally:
+                    await self.db.close()
 
     async def on_ready(self):
         logger.info("Club Agent connected; bot_id=%s server_count=%d", self.user.id, len(self.guilds))

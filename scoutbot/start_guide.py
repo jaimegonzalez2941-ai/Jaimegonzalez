@@ -1,6 +1,5 @@
 """Owner-scoped Discord navigation. Reading this guide never changes club records."""
 
-import asyncio
 from dataclasses import dataclass
 from time import monotonic
 
@@ -125,7 +124,6 @@ class StartGuide(SecureView):
         self.owner, self.guild = owner, guild
         self.route, self.index = None, 0
         self.expires_at, self.expired = monotonic() + 600, False
-        self.navigation_lock = asyncio.Lock()
         self.content_version = CONTENT_VERSION
         self.resume_pending = False
         # Only shown on reopening a saved guide.
@@ -151,7 +149,7 @@ class StartGuide(SecureView):
 
     def show_resume_choice(self):
         # Do not copy a checkpoint into the view: Resume reads the newest position
-        # under the shared lock, including navigation in another open menu.
+        # under the viewer/server lock, including navigation in another open menu.
         self.resume_pending = True
         self.remove_item(self.menu)
         self.remove_item(self.back)
@@ -234,7 +232,7 @@ class StartGuide(SecureView):
         # Defer before waiting on another menu's network request.
         await interaction.response.defer()
         db = interaction.client.db
-        async with self.navigation_lock, db.start_guide_lock:
+        async with db.guide_navigation(self.guild, self.owner):
             await self.interaction_check(interaction)
             route, index = self.route, self.index
             choosing_resume = action in ("resume", "start_over")
@@ -308,7 +306,7 @@ async def send_start(interaction):
     member_access(interaction)
     await interaction.response.defer(ephemeral=True)
     db = interaction.client.db
-    async with db.start_guide_lock:
+    async with db.guide_navigation(interaction.guild.id, interaction.user.id):
         view = StartGuide(interaction.user.id, interaction.guild.id)
         # Always validate current access, even when the opening card is generic.
         result = await view.render(interaction, None, 0)

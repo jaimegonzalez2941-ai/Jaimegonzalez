@@ -103,9 +103,10 @@ class Database(ClubStore, AssistantStore):
         self.workspace_views = set()
         # Keep Discord publication serialized separately from SQL transactions.
         self.start_panel_lock = asyncio.Lock()
-        # Serialize publication + checkpoint updates across private menus, without
-        # holding the SQL transaction lock during Discord requests. No per-user map.
-        self.start_guide_lock = asyncio.Lock()
+        # Guide locks are scoped to one viewer/server and removed when their last
+        # holder or waiter exits, so transient users do not accumulate in a map.
+        self._guide_lock_registry = asyncio.Lock()
+        self._guide_locks = {}
 
     async def open(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -145,6 +146,26 @@ class Database(ClubStore, AssistantStore):
         if self.connection:
             await self.connection.close()
             self.connection = None
+
+    @asynccontextmanager
+    async def guide_navigation(self, guild, viewer):
+        """Serialize a viewer's private guide publication and checkpoint writes."""
+        key = (str(guild), str(viewer))
+        async with self._guide_lock_registry:
+            entry = self._guide_locks.get(key)
+            if entry is None:
+                entry = {"lock": asyncio.Lock(), "users": 0}
+                self._guide_locks[key] = entry
+            # Count waiters too, so an entry cannot disappear before they acquire it.
+            entry["users"] += 1
+        try:
+            async with entry["lock"]:
+                yield
+        finally:
+            async with self._guide_lock_registry:
+                entry["users"] -= 1
+                if entry["users"] == 0 and self._guide_locks.get(key) is entry:
+                    del self._guide_locks[key]
 
     @property
     def conn(self) -> aiosqlite.Connection:

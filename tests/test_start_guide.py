@@ -430,6 +430,64 @@ class StartGuideTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(pending.route)
         self.assertIsNone(await self.checkpoint())
 
+    async def test_slow_navigation_does_not_block_an_unrelated_viewer(self):
+        blocked = StartGuide(self.player.user.id, self.player.guild.id)
+        unrelated_interaction = self.interaction(45)
+        unrelated = StartGuide(unrelated_interaction.user.id, unrelated_interaction.guild.id)
+        edit_started, release_edit = asyncio.Event(), asyncio.Event()
+
+        async def slow_edit(**kwargs):
+            edit_started.set()
+            await release_edit.wait()
+
+        self.player.edit_original_response.side_effect = slow_edit
+        blocked_task = asyncio.create_task(
+            blocked.navigate(self.player, "choose", selected="player"))
+        try:
+            await asyncio.wait_for(edit_started.wait(), timeout=1)
+            await asyncio.wait_for(
+                unrelated.navigate(unrelated_interaction, "choose", selected="reference"),
+                timeout=1)
+            self.assertEqual((await self.checkpoint(unrelated_interaction))["route"], "reference")
+        finally:
+            release_edit.set()
+            await blocked_task
+
+        self.assertEqual((await self.checkpoint())["route"], "player")
+        self.assertEqual(self.bot.db._guide_locks, {})
+
+    async def test_same_viewer_menus_serialize_publication_and_checkpoint(self):
+        first = StartGuide(self.player.user.id, self.player.guild.id)
+        second_interaction = self.interaction(self.player.user.id)
+        second = StartGuide(second_interaction.user.id, second_interaction.guild.id)
+        edit_started, release_edit, second_deferred = (
+            asyncio.Event(), asyncio.Event(), asyncio.Event())
+
+        async def slow_edit(**kwargs):
+            edit_started.set()
+            await release_edit.wait()
+
+        self.player.edit_original_response.side_effect = slow_edit
+        second_interaction.response.defer.side_effect = second_deferred.set
+        first_task = asyncio.create_task(first.navigate(self.player, "choose", selected="player"))
+        try:
+            await asyncio.wait_for(edit_started.wait(), timeout=1)
+            second_task = asyncio.create_task(
+                second.navigate(second_interaction, "choose", selected="reference"))
+            await asyncio.wait_for(second_deferred.wait(), timeout=1)
+            await asyncio.sleep(0)
+            self.assertFalse(second_task.done())
+            second_interaction.edit_original_response.assert_not_awaited()
+        finally:
+            release_edit.set()
+            await first_task
+        await second_task
+
+        checkpoint = await self.checkpoint()
+        self.assertEqual((checkpoint["route"], checkpoint["step"]), ("reference", 0))
+        self.assertEqual((first.route, second.route), ("player", "reference"))
+        self.assertEqual(self.bot.db._guide_locks, {})
+
     async def test_failed_discord_navigation_does_not_replace_checkpoint(self):
         view, _ = await self.opened(self.player)
         await view.navigate(self.player, "choose", selected="player")

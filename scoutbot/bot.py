@@ -75,6 +75,7 @@ class ScoutBot(commands.Bot):
 
     @tasks.loop(seconds=60)
     async def notification_worker(self):
+        await self.db.cleanup_guide_checkpoints()
         await deliver_due_notifications(self)
 
     @notification_worker.before_loop

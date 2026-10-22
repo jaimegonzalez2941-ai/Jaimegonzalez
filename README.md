@@ -18,6 +18,25 @@ Each screen shows a next command and short guidance. Type that command separatel
 
 Only routes you can currently access are shown. Every continuation checks the original viewer and server; staff and manager access is checked again before restricted guidance is shown. **Command reference** remains in the menu for categorized lookups, and staff can still use `/scout help`. The menu expires after ten minutes or a bot restart; run `/club` again to reopen it.
 
+When a recent position exists, reopening `/club` (or the public Start Here button) offers
+**Resume** or **Start over**. Resume checks your current server membership, staff/manager
+access, route, step and guide content version again. Invalid, removed, obsolete or no-longer-
+authorized positions return to Home. Start over and Home erase your saved position.
+Resuming never runs a suggested command or claims that setup, attendance, recruitment or
+tasks are complete.
+
+**Navigation retention:** SQLite stores at most one checkpoint per viewer and server:
+the route, zero-based step and content version, plus the two scope IDs and last-navigation
+timestamp needed for isolation and expiry. There are no notes, evidence, command arguments,
+completion flags, copied guide text or navigation history. Checkpoints expire after **30 days
+since the last successful navigation**, without renewal merely for reopening the choice.
+Expired rows are deleted on startup, on checkpoint reads/writes, and by the running bot's
+one-minute maintenance loop (while offline, deletion occurs at the next startup).
+Concurrent menus share one checkpoint: the last successfully published navigation wins;
+Resume reads that latest position, not a stale copy from when its menu opened.
+Maintainers must bump `CONTENT_VERSION` in `scoutbot/start_content.py` whenever route/step
+order, meaning, reference access or the dynamic manager checklist changes.
+
 **Optional welcome-channel button:** A member with **Manage Server** can run
 `/start_panel channel:#welcome` (or choose a help text channel). This explicitly creates
 one generic **Club Agent · Start Here** message per server; nothing is posted automatically.

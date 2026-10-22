@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
+import time
 import uuid
 from pathlib import Path
 
@@ -14,6 +15,9 @@ from .parser import PlayerStats
 from .rubric import VERSION, validate_payload
 from .club_store import ClubStore, CLUB_SCHEMA
 from .assistant_store import AssistantStore, ASSISTANT_SCHEMA
+
+
+GUIDE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 
 
 def utcnow() -> str:
@@ -66,6 +70,15 @@ CREATE TABLE IF NOT EXISTS start_panels (
     guild_id TEXT PRIMARY KEY, channel_id TEXT NOT NULL, message_id TEXT,
     marker TEXT NOT NULL, created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS guide_checkpoints (
+    guild_id TEXT NOT NULL, viewer_id TEXT NOT NULL,
+    route TEXT NOT NULL CHECK(length(route) BETWEEN 1 AND 32),
+    step INTEGER NOT NULL CHECK(step BETWEEN 0 AND 100),
+    content_version TEXT NOT NULL CHECK(length(content_version) BETWEEN 1 AND 64),
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(guild_id,viewer_id)
+);
+CREATE INDEX IF NOT EXISTS guide_expiry ON guide_checkpoints(updated_at);
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT NOT NULL,
     actor_id TEXT NOT NULL, action TEXT NOT NULL, details TEXT NOT NULL,
@@ -90,6 +103,9 @@ class Database(ClubStore, AssistantStore):
         self.workspace_views = set()
         # Keep Discord publication serialized separately from SQL transactions.
         self.start_panel_lock = asyncio.Lock()
+        # Serialize publication + checkpoint updates across private menus, without
+        # holding the SQL transaction lock during Discord requests. No per-user map.
+        self.start_guide_lock = asyncio.Lock()
 
     async def open(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -121,6 +137,7 @@ class Database(ClubStore, AssistantStore):
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (2)")
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (3)")
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (4)")
+        await self.cleanup_guide_checkpoints()
 
     async def close(self):
         for view in tuple(self.workspace_views):
@@ -176,6 +193,34 @@ class Database(ClubStore, AssistantStore):
 
     async def settings(self, guild: int) -> dict | None:
         return await self.one("SELECT * FROM guild_settings WHERE guild_id=?", (str(guild),))
+
+    async def cleanup_guide_checkpoints(self):
+        async with self.transaction() as conn:
+            await conn.execute("DELETE FROM guide_checkpoints WHERE updated_at<=?",
+                               (int(time.time()) - GUIDE_RETENTION_SECONDS,))
+
+    async def guide_checkpoint(self, guild, viewer):
+        await self.cleanup_guide_checkpoints()
+        return await self.one(
+            "SELECT * FROM guide_checkpoints WHERE guild_id=? AND viewer_id=?",
+            (str(guild), str(viewer)))
+
+    async def save_guide_checkpoint(self, guild, viewer, route, step, version):
+        async with self.transaction() as conn:
+            now = int(time.time())
+            await conn.execute("DELETE FROM guide_checkpoints WHERE updated_at<=?",
+                               (now - GUIDE_RETENTION_SECONDS,))
+            await conn.execute(
+                """INSERT INTO guide_checkpoints VALUES (?,?,?,?,?,?)
+                ON CONFLICT(guild_id,viewer_id) DO UPDATE SET
+                route=excluded.route, step=excluded.step,
+                content_version=excluded.content_version, updated_at=excluded.updated_at""",
+                (str(guild), str(viewer), route, step, version, now))
+
+    async def clear_guide_checkpoint(self, guild, viewer):
+        async with self.transaction() as conn:
+            await conn.execute("DELETE FROM guide_checkpoints WHERE guild_id=? AND viewer_id=?",
+                               (str(guild), str(viewer)))
 
     async def start_panel(self, guild):
         return await self.one("SELECT * FROM start_panels WHERE guild_id=?", (str(guild),))

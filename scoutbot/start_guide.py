@@ -9,7 +9,7 @@ import discord
 from .access import AccessDenied
 from .club_ui import card, member_access
 from .domain import STAGES, is_staff
-from .start_content import JOURNEYS, REFERENCE, ROUTES, Step
+from .start_content import CONTENT_VERSION, JOURNEYS, REFERENCE, ROUTES, Step
 from .views import SecureView
 
 
@@ -126,6 +126,11 @@ class StartGuide(SecureView):
         self.route, self.index = None, 0
         self.expires_at, self.expired = monotonic() + 600, False
         self.navigation_lock = asyncio.Lock()
+        self.content_version = CONTENT_VERSION
+        self.resume_pending = False
+        # Only shown on reopening a saved guide.
+        self.remove_item(self.resume)
+        self.remove_item(self.start_over)
         self.menu = discord.ui.Select(
             placeholder="Choose your workflow", custom_id="club:start:route", row=0)
         self.menu.callback = self.choose
@@ -143,6 +148,36 @@ class StartGuide(SecureView):
         self.expired = True
         for item in self.children:
             item.disabled = True
+
+    def show_resume_choice(self):
+        # Do not copy a checkpoint into the view: Resume reads the newest position
+        # under the shared lock, including navigation in another open menu.
+        self.resume_pending = True
+        self.remove_item(self.menu)
+        self.remove_item(self.back)
+        self.remove_item(self.home)
+        self.remove_item(self.next)
+        self.add_item(self.resume)
+        self.add_item(self.start_over)
+        return card("Club Agent · Resume Start Here?",
+                    "A recent guide position is saved for you in this server.\n\n"
+                    "Choose **Resume** to return to it, or **Start over** for Home. "
+                    "This saves navigation only, not completed actions. "
+                    "Current permissions are checked again when you resume.")
+
+    async def resume_position(self, interaction):
+        row = await interaction.client.db.guide_checkpoint(self.guild, self.owner)
+        access = await audience(interaction)
+        if not row or row["content_version"] != CONTENT_VERSION:
+            return None, 0
+        route, index = row["route"], row["step"]
+        if route not in ROUTES or not access.allows(ROUTES[route][2]):
+            return None, 0
+        steps = (await manager_steps(interaction, access) if route == "manager"
+                 else reference_steps(access) if route == "reference" else JOURNEYS[route])
+        if type(index) is not int or not 0 <= index < len(steps):
+            return None, 0
+        return route, index
 
     async def render(self, interaction, route, index):
         access = await audience(interaction)
@@ -181,7 +216,7 @@ class StartGuide(SecureView):
             if step.related:
                 result.add_field(name="When needed",
                     value="\n".join(f"`{command}` — {why}" for command, why in step.related), inline=False)
-        result.set_footer(text="Club Agent • Only you can see this guide • Lasts 10 minutes; /club reopens it")
+        result.set_footer(text="Club Agent • Only you can see this guide • Lasts 10 minutes; /club to reopen/resume")
         self.back.disabled = route is None
         self.home.disabled = route is None
         self.next.disabled = route is None or index >= count - 1
@@ -196,10 +231,25 @@ class StartGuide(SecureView):
     async def navigate(self, interaction, action, *, selected=None):
         # Check again inside callbacks as well as at Discord's view-dispatch boundary.
         await self.interaction_check(interaction)
-        async with self.navigation_lock:
+        # Defer before waiting on another menu's network request.
+        await interaction.response.defer()
+        db = interaction.client.db
+        async with self.navigation_lock, db.start_guide_lock:
             await self.interaction_check(interaction)
             route, index = self.route, self.index
-            if action == "home":
+            choosing_resume = action in ("resume", "start_over")
+            if choosing_resume:
+                if not self.resume_pending:
+                    raise ValueError("This choice was already used. Run /club to reopen the guide.")
+                route, index = ((await self.resume_position(interaction))
+                                if action == "resume" else (None, 0))
+                self.remove_item(self.resume)
+                self.remove_item(self.start_over)
+                for item in (self.menu, self.back, self.home, self.next):
+                    self.add_item(item)
+            elif self.resume_pending:
+                raise ValueError("Choose Resume or Start over first.")
+            elif action == "home":
                 route, index = None, 0
             elif action == "choose":
                 if selected not in ROUTES:
@@ -211,12 +261,34 @@ class StartGuide(SecureView):
                 index += 1
             else:
                 raise ValueError("Choose a workflow first, or return Home.")
-            # Acknowledge promptly; settings/checklist reads can outlast Discord's initial deadline.
-            await interaction.response.defer()
-            result = await self.render(interaction, route, index)
+            # An already-open view must not write an old position as new content.
+            if self.content_version != CONTENT_VERSION:
+                route, index = None, 0
+            try:
+                result = await self.render(interaction, route, index)
+                await interaction.edit_original_response(
+                    embed=result, view=self, allowed_mentions=discord.AllowedMentions.none())
+            except BaseException:
+                if choosing_resume:
+                    # Keep the choice usable when Discord failed to publish it.
+                    self.show_resume_choice()
+                raise
+            self.resume_pending = False
+            self.content_version = CONTENT_VERSION
             self.route, self.index = route, index
-            await interaction.edit_original_response(
-                embed=result, view=self, allowed_mentions=discord.AllowedMentions.none())
+            if route is None:
+                await db.clear_guide_checkpoint(self.guild, self.owner)
+            else:
+                await db.save_guide_checkpoint(self.guild, self.owner, route, index, CONTENT_VERSION)
+
+    @discord.ui.button(label="Resume", style=discord.ButtonStyle.primary,
+                       custom_id="club:start:resume", row=1)
+    async def resume(self, interaction, button):
+        await self.navigate(interaction, "resume")
+
+    @discord.ui.button(label="Start over", custom_id="club:start:over", row=1)
+    async def start_over(self, interaction, button):
+        await self.navigate(interaction, "start_over")
 
     @discord.ui.button(label="Back", custom_id="club:start:back", row=1)
     async def back(self, interaction, button):
@@ -233,8 +305,14 @@ class StartGuide(SecureView):
 
 
 async def send_start(interaction):
+    member_access(interaction)
     await interaction.response.defer(ephemeral=True)
-    view = StartGuide(interaction.user.id, interaction.guild.id)
-    result = await view.render(interaction, None, 0)
-    await interaction.followup.send(embed=result, view=view, ephemeral=True,
-                                    allowed_mentions=discord.AllowedMentions.none())
+    db = interaction.client.db
+    async with db.start_guide_lock:
+        view = StartGuide(interaction.user.id, interaction.guild.id)
+        # Always validate current access, even when the opening card is generic.
+        result = await view.render(interaction, None, 0)
+        if await db.guide_checkpoint(view.guild, view.owner):
+            result = view.show_resume_choice()
+        await interaction.followup.send(embed=result, view=view, ephemeral=True,
+                                        allowed_mentions=discord.AllowedMentions.none())

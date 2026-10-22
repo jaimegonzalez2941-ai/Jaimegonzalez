@@ -20,3 +20,11 @@ The user wants a "start here" workflow so people know where to go, rather than c
 **Why:** The user found the number of commands overwhelming.
 
 **How to apply:** Introduce features through concise, role-appropriate next-action guidance; keep detailed command lists as a reference rather than the main onboarding experience.
+
+Saved guide positions are "optional navigation continuity, not a record that the user
+completed any real-world action."
+
+**Why:** The user explicitly separated resuming guidance from performing or completing club work.
+
+**How to apply:** Do not use guide navigation as evidence of setup, attendance, recruitment,
+or task completion, or let browsing execute the suggested actions.

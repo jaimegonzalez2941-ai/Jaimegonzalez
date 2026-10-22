@@ -3,6 +3,11 @@
 from dataclasses import dataclass
 
 
+# Bump whenever route ordering, step meaning/order, reference access, or the
+# dynamic manager checklist changes. Old positions must not acquire new meaning.
+CONTENT_VERSION = "1"
+
+
 @dataclass(frozen=True)
 class Step:
     title: str

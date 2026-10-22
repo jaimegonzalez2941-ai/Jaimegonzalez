@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 # Bump whenever route ordering, step meaning/order, reference access, or the
 # dynamic manager checklist changes. Old positions must not acquire new meaning.
-CONTENT_VERSION = "1"
+CONTENT_VERSION = "2"
 
 
 @dataclass(frozen=True)
@@ -164,7 +164,8 @@ REFERENCE = (
         ("/schedule list", "List upcoming or past sessions"),
         ("/schedule show", "Read a session and your RSVP"),
         ("/schedule rsvp", "Commit yes, maybe or no before kickoff"),
-        ("/attendance report", "Read attendance; staff may choose a player"))),
+        ("/attendance report", "Read attendance; staff may choose a player"),
+        ("/website", "Verify your own website account using its short-lived code"))),
     ("Scouting evidence", "staff", (
         ("/scout evaluate", "Open a position-aware scorecard"),
         ("/scout player", "Read the unified saved dossier"),

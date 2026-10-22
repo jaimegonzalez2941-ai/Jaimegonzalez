@@ -418,7 +418,7 @@ class OperationsCommandTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_all_slash_commands_serialize(self):
         commands = self.bot.tree.get_commands()
-        self.assertEqual({c.name for c in commands}, {"club", "start_panel", "scout", "availability", "schedule", "attendance",
+        self.assertEqual({c.name for c in commands}, {"club", "start_panel", "website", "scout", "availability", "schedule", "attendance",
                                                     "promotion", "assistant", "development"})
         for command in commands:
             payload = command.to_dict(self.bot.tree)

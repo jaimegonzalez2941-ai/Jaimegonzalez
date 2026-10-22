@@ -122,6 +122,7 @@ class StartPanelTests(unittest.IsolatedAsyncioTestCase):
         await self.bot.db.open()
         with patch.object(self.bot.tree, "sync", AsyncMock(return_value=[])), \
                 patch("scoutbot.bot.apply_branding", AsyncMock()), \
+                patch.object(self.bot.web_bridge, "start", AsyncMock()), \
                 patch.object(self.bot.notification_worker, "start"), \
                 patch.object(self.bot.db, "open", AsyncMock()):
             await self.bot.setup_hook()

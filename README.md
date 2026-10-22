@@ -1,6 +1,6 @@
 # Club Agent
 
-A continuously running Discord bot for private player scouting, recruitment, availability, scheduling, attendance, and trusted match recaps. The original bot script and any earlier database have not been changed. Existing V2 records remain at `.data/scout-v2.db`; this update adds tables without replacing the database.
+A continuously running Discord bot and companion website for private player scouting, recruitment, availability, scheduling, attendance, and trusted match recaps. Existing V2 records remain at `.data/scout-v2.db`; website access adds account-link metadata without replacing the database or recalculating historical records.
 
 The bot applies the **Club Agent** Discord username and the supplied avatar on startup. The image is bundled locally; a stored image fingerprint prevents unnecessary avatar updates on each restart. A failed Discord identity update is logged without disabling club commands. Existing custom server nicknames are updated where Discord permits.
 
@@ -173,8 +173,10 @@ Match ratings are reported EA input, not human scouting scores; the scouting no-
 
 ## Coach and owner workspace
 
-The workspace stays in this Discord bot. There is no new web application, public recruitment
-board, AI service, automatic role change or score recalculation.
+The workspace is available in Discord and the private companion website. Both interfaces use
+the same Python operations and SQLite records. There is no public recruitment board, public
+player dossier, player-facing development dashboard, AI prediction service, automatic role
+change or score recalculation.
 
 ### Access, privacy and dates
 
@@ -310,6 +312,100 @@ separate session-notification workflow or any attendance/promotion policy.
 ```sh
 uv run python -m scoutbot --check
 uv run python -m unittest discover -s tests -v
+node --experimental-strip-types --test tests/test_web_origin.mjs
 ```
 
 The startup check opens and validates the SQLite schema and serializes all Discord slash commands without logging in or making changes in Discord.
+
+## Companion website
+
+The registered **Club Agent** website lives at `/`. The existing Canvas is still a design
+sandbox, not the live companion site. Public pages describe the workflows and provide a
+Start Here guide, staff sign-in and a bot install link derived from the running bot's actual
+application ID and required permissions. If the bot is unavailable, installation status
+is shown as unavailable rather than inventing a link. No community invite is configured.
+
+Run these managed workflows together:
+
+- **Scout Discord Bot** — owns Discord connectivity, SQLite, notifications and the private application boundary.
+- **artifacts/api-server: API Server** — verifies Clerk sessions and forwards authorized requests to the bot.
+- **artifacts/club-agent: web** — serves the responsive public site and private staff workspace.
+
+### Sign in and verify Discord
+
+1. Open **Staff sign in** and sign in or create a website account.
+2. Choose **Create link code**. Codes last five minutes, work once and are never a staff permission grant.
+3. In a server with Club Agent, run `/website code:YOUR_CODE` from your own Discord account.
+   **Never redeem a code sent by someone else.** Only use the code shown in your own signed-in browser.
+4. Return to the site and refresh access. Only servers where Discord currently verifies you as
+   configured staff or a server manager appear. Ordinary players cannot enter the staff workspace.
+
+New accounts are never made administrators. The website does not accept a typed Discord
+identity as authority and does not use the workspace owner's connected Discord account.
+Manager setup stays restricted to Manage Server. Role assignment retains Manage Roles,
+hierarchy, safe-role and evidence checks. Existing notification configuration remains a
+staff operation, matching Discord.
+
+### Private administration
+
+The workspace covers saved overview summaries; configuration and live privacy diagnostics;
+session creation, editing, cancellation, assignment and roster review; weekly availability
+and leave decisions; attendance marking/reports and promotion evidence; player dossiers,
+compatible comparisons, EA links and trusted text imports; private versioned evaluation
+drafts; recruitment follow-ups and authorized tier assignment; staff goals/tasks; on-demand
+briefings; and attributable audit history.
+
+Forms are backed by existing operations, not a second command implementation. Evaluation
+corrections require the current draft revision and save still enforces full evidence and
+the no-7 band. Time changes reset commitments and retain notification revision/deduplication
+rules. Leave, excused marks, unmarked sessions and recorded absences remain distinct.
+
+For manager launch-panel publication use `/start_panel` in Discord. For the private docket
+use `/scout docket`. The website explains these linked workflows and never retries uncertain
+publication or silently creates another panel.
+
+Lists are server-filtered and bounded. Long dossier/briefing/history views retain private
+continuations, recheck current access on every page and expire within ten minutes.
+Use **Refresh** to read writes from Discord or another website session. No aggressive polling
+or Discord member enumeration is used. Missing or disconnected services are not rendered as
+successful checks or fabricated zero records.
+
+### Application boundary and operations
+
+The bot listens only on `.data/club-web/bridge.sock`, inside a mode-0700 directory; the Unix
+socket is mode 0600. The API and bot must run as the same OS account on the same machine.
+There is no network-listening bridge, raw SQL endpoint, browser-accessible credential
+manager or direct SQLite access from TypeScript. `CLUB_WEB_SOCKET` optionally changes the
+socket path for a deliberate local installation; use the same value for both services.
+Restart the API after changing it.
+
+Clerk credentials are provisioned by Replit and read only by the auth libraries. The bot
+token remains only in the Python process. Every private request verifies the Clerk session
+and fresh Discord membership/roles; cookie-authenticated mutations also require same-origin
+JSON requests. Private responses are not cacheable. A failure or timeout can happen after a
+write succeeded: inspect current records/roles before retrying. No operation is automatically
+repeated by the website.
+
+Saved setup is explicitly distinct from current checks. The live privacy check identifies
+blocked entries without changing channel permissions. A webhook ID alone is not ownership
+proof; current privacy/read permissions do not prove a recap's format or notification delivery.
+
+No application has been published as part of this work. A future hosting setup must keep
+the bot and API together with durable SQLite storage; a static frontend by itself is not
+an operational club administration service.
+
+### Website verification
+
+```sh
+uv run python -m unittest discover -s tests -v
+pnpm run typecheck
+PORT=23467 BASE_PATH=/ pnpm --filter @workspace/club-agent run build
+pnpm --filter @workspace/api-server run build
+```
+
+`tests/test_web_companion.py` exercises linking, permission revocation, cross-server isolation,
+bounded reads, command input validation, confirmation, shared writes, evaluation revisions and
+snapshot ownership using temporary databases. `tests/web_browser_fixture.py` is an explicitly
+started local-only browser fixture with temporary records and a subject-file allowlist.
+It is never imported by application code. It must never share a real database or socket
+with the bot. Restore the API's normal socket path after browser verification.

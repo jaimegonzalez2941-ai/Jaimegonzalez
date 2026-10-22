@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Club Agent"
+description = "Public companion site and protected club staff workspace for the Club Agent Discord bot, sharing existing Python workflows and SQLite records."
+version = "1.0.0"
+id = "artifacts/club-agent"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23467
+
+[services.development]
+run = "pnpm --filter @workspace/club-agent run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/club-agent", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/club-agent/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23467"
+BASE_PATH = "/"

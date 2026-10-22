@@ -21,6 +21,8 @@ from .ingestion import import_message
 from .parser import RecapFormatError
 from .views import DocketView, respond_error
 from .notification_worker import deliver_due_notifications
+from .web_bridge import WebBridge
+from .web_identity import website_link
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +45,17 @@ class ScoutBot(commands.Bot):
         )
         self.settings = settings
         self.db = Database(settings.database)
+        self.web_bridge = WebBridge(self)
 
     def register_commands(self):
         for command in (ScoutCommands(self), AvailabilityCommands(self), ScheduleCommands(self),
                         AttendanceCommands(self), PromotionCommands(self), AssistantCommands(self),
-                        DevelopmentCommands(self), club_help, start_panel):
+                         DevelopmentCommands(self), club_help, start_panel, website_link):
             self.tree.add_command(command)
 
     async def setup_hook(self):
         await self.db.open()
+        await self.web_bridge.start()
         self.add_view(DocketView())
         self.add_view(StartPanel())
         self.register_commands()
@@ -70,6 +74,7 @@ class ScoutBot(commands.Bot):
     @tasks.loop(seconds=60)
     async def notification_worker(self):
         await self.db.cleanup_guide_checkpoints()
+        await self.web_bridge.cleanup()
         await deliver_due_notifications(self)
 
     @notification_worker.before_loop
@@ -78,6 +83,7 @@ class ScoutBot(commands.Bot):
 
     async def close(self):
         try:
+            await self.web_bridge.close()
             if self.notification_worker.is_running():
                 self.notification_worker.cancel()
             await super().close()

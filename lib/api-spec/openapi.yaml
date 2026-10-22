@@ -11,6 +11,69 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /club/public:
+    get:
+      operationId: getClubPublic
+      responses:
+        "200":
+          description: Bot connection and installation information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClubPublic"
+  /club/access:
+    get:
+      operationId: getClubAccess
+      responses:
+        "200":
+          description: Verified account connection and authorized servers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClubAccess"
+  /club/link:
+    post:
+      operationId: createClubLink
+      responses:
+        "200":
+          description: Short-lived Discord verification challenge
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LinkChallenge"
+  /club/workspace:
+    get:
+      operationId: getClubWorkspace
+      parameters:
+        - {name: guild, in: query, required: true, schema: {type: string}}
+        - {name: screen, in: query, required: true, schema: {type: string}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 10000}}
+        - {name: search, in: query, schema: {type: string, maxLength: 100}}
+        - {name: status, in: query, schema: {type: string}}
+        - {name: snapshot, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: Bounded server-scoped workspace page and available operations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspacePage"
+  /club/action:
+    post:
+      operationId: runClubAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClubActionInput"
+      responses:
+        "200":
+          description: Confirmed operation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionResult"
   /healthz:
     get:
       operationId: healthCheck
@@ -26,6 +89,96 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    ClubPublic:
+      type: object
+      required: [connected]
+      properties:
+        connected: {type: boolean}
+        installUrl: {type: [string, "null"]}
+        message: {type: string}
+    ClubServer:
+      type: object
+      required: [id, name, manager]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        manager: {type: boolean}
+    ClubAccess:
+      type: object
+      required: [linked, servers]
+      properties:
+        linked: {type: boolean}
+        discordName: {type: string}
+        servers: {type: array, items: {$ref: "#/components/schemas/ClubServer"}}
+    LinkChallenge:
+      type: object
+      required: [code, expiresIn]
+      properties:
+        code: {type: string}
+        expiresIn: {type: integer}
+    ActionField:
+      type: object
+      required: [name, label, type, required]
+      properties:
+        name: {type: string}
+        label: {type: string}
+        type: {type: string}
+        required: {type: boolean}
+        choices: {type: array, items: {$ref: "#/components/schemas/FieldChoice"}}
+        minimum: {type: number}
+        maximum: {type: number}
+    FieldChoice:
+      type: object
+      required: [label, value]
+      properties:
+        label: {type: string}
+        value: {type: string}
+    ClubOperation:
+      type: object
+      required: [id, label, description, fields, confirmation]
+      properties:
+        id: {type: string}
+        label: {type: string}
+        description: {type: string}
+        fields: {type: array, items: {$ref: "#/components/schemas/ActionField"}}
+        confirmation: {type: boolean}
+    EvidenceBlock:
+      type: object
+      required: [title, text]
+      properties:
+        title: {type: string}
+        text: {type: string}
+    RecordRow:
+      type: object
+      additionalProperties: true
+    WorkspacePage:
+      type: object
+      required: [title, rows, blocks, operations, page, hasNext, live]
+      properties:
+        title: {type: string}
+        rows: {type: array, items: {$ref: "#/components/schemas/RecordRow"}}
+        blocks: {type: array, items: {$ref: "#/components/schemas/EvidenceBlock"}}
+        operations: {type: array, items: {$ref: "#/components/schemas/ClubOperation"}}
+        page: {type: integer}
+        hasNext: {type: boolean}
+        live: {type: string}
+        snapshot: {type: string}
+    ClubActionInput:
+      type: object
+      required: [guild, operation, values]
+      properties:
+        guild: {type: string}
+        operation: {type: string}
+        values: {type: object, additionalProperties: true}
+        confirmed: {type: boolean}
+    ActionResult:
+      type: object
+      required: [message, blocks]
+      properties:
+        message: {type: string}
+        blocks: {type: array, items: {$ref: "#/components/schemas/EvidenceBlock"}}
+        snapshot: {type: string}
+        draft: {type: object, additionalProperties: true}
     HealthStatus:
       type: object
       properties:

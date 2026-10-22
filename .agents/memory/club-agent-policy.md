@@ -28,3 +28,13 @@ completed any real-world action."
 
 **How to apply:** Do not use guide navigation as evidence of setup, attendance, recruitment,
 or task completion, or let browsing execute the suggested actions.
+
+The companion website's first release is a public site with bot features and "why we're
+different," plus a private admin UI. Public/player development dashboards come later.
+
+**Why:** The user explicitly requested both website surfaces but prioritized "Right now private
+admin UI with complete optimization" and deferred the player development dashboard.
+
+**How to apply:** Build the public explanation and real private administration together, without
+exposing player development, scouting, or attendance records publicly. The earlier bot-only scope
+does not prohibit this requested companion website.

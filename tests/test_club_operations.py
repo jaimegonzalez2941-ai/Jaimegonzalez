@@ -21,6 +21,7 @@ from scoutbot.club_domain import (
 from scoutbot.config import Settings
 from scoutbot.commands import ScoutCommands
 from scoutbot.database import Database
+from scoutbot.notification_worker import deliver_candidate, notification_message
 from scoutbot.schedule_commands import ScheduleCommands
 
 
@@ -208,6 +209,181 @@ class ClubRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.db.attendance_summary(1, 42, 60))["eligible"], 5)
         self.assertEqual(len(await self.db.history(1, 42)), 1)
 
+    async def test_notification_settings_are_off_by_default_and_server_scoped(self):
+        default = await self.db.notification_settings(1)
+        self.assertIsNone(default["channel_id"])
+        self.assertEqual(default["lead_minutes"], 1440)
+        await self.session()
+        self.assertEqual(await self.db.notification_candidates(), [])
+        await self.db.set_notification_settings(1, 7, 1234, 360)
+        await self.db.set_notification_settings(2, 8, 9876, 60)
+        self.assertEqual((await self.db.notification_settings(1))["channel_id"], "1234")
+        self.assertEqual((await self.db.notification_settings(2))["channel_id"], "9876")
+        await self.db.set_notification_settings(1, 7, None, 360)
+        self.assertIsNone((await self.db.notification_settings(1))["channel_id"])
+        self.assertEqual((await self.db.notification_settings(2))["channel_id"], "9876")
+
+    async def test_notification_candidates_are_isolated_by_server(self):
+        await self.db.set_notification_settings(1, 7, 1234, 72 * 60)
+        await self.db.set_notification_settings(2, 8, 5678, 72 * 60)
+        first = await self.session(guild=1)
+        second = await self.session(guild=2)
+        candidates = await self.db.notification_candidates()
+        routed = {(item["guild_id"], item["channel_id"], item["event"]["id"])
+                  for item in candidates if item["kind"] == "reminder"}
+        self.assertEqual(routed, {("1", "1234", first), ("2", "5678", second)})
+
+    async def test_notifications_recover_safely_after_restart_and_suppress_retries(self):
+        await self.db.set_notification_settings(1, 7, 1234, 72 * 60)
+        identifier = await self.session()
+        candidates = await self.db.notification_candidates()
+        reminder = next(item for item in candidates if item["kind"] == "reminder")
+        self.assertTrue(await self.db.claim_notification(
+            1, 1234, identifier, "reminder", reminder["delivery_key"],
+            reminder["event"]["revision"], reminder["event"]["starts_at"]))
+        await self.db.close()
+        await self.db.open()
+        self.assertEqual(await self.db.notification_candidates(), [])
+        row = await self.db.one("SELECT status FROM club_notification_deliveries")
+        self.assertEqual(row["status"], "sending")
+
+    async def test_stale_reminder_and_superseded_edit_are_discarded(self):
+        await self.db.set_notification_settings(1, 7, 1234, 168 * 60)
+        identifier = await self.session()
+        old_reminder = next(item for item in await self.db.notification_candidates()
+                            if item["kind"] == "reminder")
+        self.assertTrue(await self.db.claim_notification(
+            1, 1234, identifier, "reminder", old_reminder["delivery_key"],
+            old_reminder["event"]["revision"], old_reminder["event"]["starts_at"]))
+        first_start = self.now + timedelta(days=3)
+        await self.db.edit_event(1, 7, identifier, "Moved once", stamp(first_start),
+                                 stamp(first_start + timedelta(hours=1)), "UTC")
+        self.assertIsNone(await self.db.validate_notification(
+            1, 1234, identifier, "reminder", old_reminder["delivery_key"],
+            old_reminder["event"]["revision"], old_reminder["event"]["starts_at"]))
+
+        first_notice = next(item for item in await self.db.notification_candidates()
+                            if item["kind"] == "edited")
+        second_start = self.now + timedelta(days=4)
+        await self.db.edit_event(1, 7, identifier, "Moved twice", stamp(second_start),
+                                 stamp(second_start + timedelta(hours=1)), "UTC")
+        self.assertIsNone(await self.db.claim_notification(
+            1, 1234, identifier, "edited", first_notice["delivery_key"],
+            first_notice["event"]["revision"], first_notice["event"]["starts_at"]))
+        latest = next(item for item in await self.db.notification_candidates()
+                      if item["kind"] == "edited")
+        self.assertEqual(latest["event"]["title"], "Moved twice")
+        self.assertTrue(latest["event"]["revision_time_changed"])
+
+    async def test_edit_and_cancellation_race_produces_only_current_notice(self):
+        await self.db.set_notification_settings(1, 7, 1234, 24 * 60)
+        identifier = await self.session()
+        start = self.now + timedelta(days=3)
+        await self.db.edit_event(1, 7, identifier, "Changed", stamp(start),
+                                 stamp(start + timedelta(hours=1)), "UTC")
+        old_edit = next(item for item in await self.db.notification_candidates()
+                        if item["kind"] == "edited")
+        self.assertTrue(await self.db.claim_notification(
+            1, 1234, identifier, "edited", old_edit["delivery_key"],
+            old_edit["event"]["revision"], old_edit["event"]["starts_at"]))
+        await self.db.cancel_event(1, 7, identifier)
+        self.assertIsNone(await self.db.validate_notification(
+            1, 1234, identifier, "edited", old_edit["delivery_key"],
+            old_edit["event"]["revision"], old_edit["event"]["starts_at"]))
+        stale = await self.db.one(
+            "SELECT status FROM club_notification_deliveries WHERE delivery_key=?",
+            (old_edit["delivery_key"],))
+        self.assertEqual(stale["status"], "obsolete")
+        cancellation = next(item for item in await self.db.notification_candidates()
+                            if item["kind"] == "cancelled")
+        self.assertTrue(await self.db.claim_notification(
+            1, 1234, identifier, "cancelled", cancellation["delivery_key"],
+            cancellation["event"]["revision"], cancellation["event"]["starts_at"]))
+
+    async def test_failed_send_is_retryable_but_unknown_send_is_not(self):
+        await self.db.set_notification_settings(1, 7, 1234, 72 * 60)
+        identifier = await self.session()
+        event = await self.db.event(1, identifier)
+        delivery_key = f'reminder:{identifier}:{event["starts_at"]}'
+        self.assertTrue(await self.db.claim_notification(
+            1, 1234, identifier, "reminder", delivery_key, event["revision"], event["starts_at"]))
+        await self.db.finish_notification(1, delivery_key, status="failed", error="permission denied")
+        self.assertEqual(await self.db.notification_candidates(), [])
+        async with self.db.transaction() as conn:
+            await conn.execute(
+                "UPDATE club_notification_deliveries SET updated_at=? WHERE delivery_key=?",
+                (stamp(self.now - timedelta(minutes=20)), delivery_key))
+        retry = await self.db.notification_candidates()
+        self.assertEqual(len(retry), 1)
+        self.assertTrue(await self.db.claim_notification(
+            1, 1234, identifier, "reminder", delivery_key, event["revision"], event["starts_at"]))
+        await self.db.finish_notification(1, delivery_key, status="uncertain", error="unknown outcome")
+        self.assertEqual(await self.db.notification_candidates(), [])
+
+    async def test_notification_message_has_session_details_and_reconfirmation_only(self):
+        event = {
+            "title": "Training @everyone", "kind": "training",
+            "starts_at": stamp(self.now + timedelta(days=2)),
+            "ends_at": stamp(self.now + timedelta(days=2, hours=1)),
+            "revision_time_changed": 1,
+        }
+        message = notification_message("edited", event)
+        self.assertIn("existing RSVPs must be reconfirmed", message)
+        self.assertIn("<t:", message)
+        self.assertNotIn("@everyone", message)
+        self.assertNotIn("RSVP:", message)
+
+    async def test_worker_records_send_failure_and_suppresses_ambiguous_failure(self):
+        await self.db.set_notification_settings(1, 7, 1234, 72 * 60)
+        identifier = await self.session()
+        candidate = next(item for item in await self.db.notification_candidates()
+                         if item["kind"] == "reminder")
+        channel = SimpleNamespace(
+            permissions_for=lambda member: SimpleNamespace(view_channel=True, send_messages=True),
+            send=AsyncMock(side_effect=RuntimeError("connection lost")))
+        guild = SimpleNamespace(
+            me=object(), get_channel=lambda channel_id: channel)
+        bot = SimpleNamespace(
+            db=self.db, get_guild=lambda guild_id: guild, fetch_channel=AsyncMock())
+        self.assertFalse(await deliver_candidate(bot, candidate))
+        delivery = await self.db.one(
+            "SELECT status,last_error FROM club_notification_deliveries WHERE event_id=?",
+            (identifier,))
+        self.assertEqual(delivery["status"], "uncertain")
+        self.assertIn("unknown", delivery["last_error"])
+        self.assertEqual(await self.db.notification_candidates(), [])
+        channel.send.assert_awaited_once()
+
+    async def test_permission_failure_is_reported_and_definite_failure_can_retry(self):
+        await self.db.set_notification_settings(1, 7, 1234, 72 * 60)
+        identifier = await self.session()
+        candidate = next(item for item in await self.db.notification_candidates()
+                         if item["kind"] == "reminder")
+        permission = SimpleNamespace(view_channel=False, send_messages=False)
+        channel = SimpleNamespace(
+            permissions_for=lambda member: permission, send=AsyncMock())
+        guild = SimpleNamespace(me=object(), get_channel=lambda channel_id: channel)
+        bot = SimpleNamespace(
+            db=self.db, get_guild=lambda guild_id: guild, fetch_channel=AsyncMock())
+        self.assertFalse(await deliver_candidate(bot, candidate))
+        config = await self.db.notification_settings(1)
+        self.assertIn("Missing View Channel", config["last_error"])
+        channel.send.assert_not_awaited()
+
+        async with self.db.transaction() as conn:
+            await conn.execute(
+                "UPDATE club_notification_deliveries SET updated_at=? WHERE event_id=?",
+                (stamp(self.now - timedelta(minutes=20)), identifier))
+        permission.view_channel = True
+        permission.send_messages = True
+        channel.send = AsyncMock()
+        self.assertTrue(await deliver_candidate(bot, candidate))
+        delivery = await self.db.one(
+            "SELECT status,attempts FROM club_notification_deliveries WHERE event_id=?",
+            (identifier,))
+        self.assertEqual((delivery["status"], delivery["attempts"]), ("sent", 2))
+        self.assertIsNone((await self.db.notification_settings(1))["last_error"])
+
     async def test_branding_changes_only_once(self):
         user = SimpleNamespace(id=123, name="Old name")
         async def update(**kwargs):
@@ -298,6 +474,26 @@ class OperationsCommandTests(unittest.IsolatedAsyncioTestCase):
         summary = await self.bot.db.attendance_summary(1, 42, 30)
         self.assertEqual(summary["attended"], 1)
         self.assertGreater(len(await self.bot.db.all("SELECT id FROM audit_log")), 4)
+
+    async def test_staff_can_configure_check_and_disable_notifications(self):
+        channel = Mock(spec=discord.TextChannel)
+        channel.id = 456
+        channel.mention = "<#456>"
+        channel.permissions_for.return_value = SimpleNamespace(
+            view_channel=True, send_messages=True)
+        self.staff.guild.me = object()
+        self.staff.guild.get_channel = lambda identifier: channel if identifier == 456 else None
+        group = ScheduleCommands(self.bot)
+        await group.notifications.callback(group, self.staff, channel, 6, False)
+        config = await self.bot.db.notification_settings(1)
+        self.assertEqual((config["channel_id"], config["lead_minutes"]), ("456", 360))
+        self.assertIn("6 hour(s)", self.staff.response.send_message.call_args.args[0])
+
+        await group.notifications.callback(group, self.staff, None, None, False)
+        self.assertIn("Notifications are **on**",
+                      self.staff.response.send_message.call_args.args[0])
+        await group.notifications.callback(group, self.staff, None, None, True)
+        self.assertIsNone((await self.bot.db.notification_settings(1))["channel_id"])
 
     async def test_promotion_assignment_requires_evidence_or_explicit_audited_override(self):
         interaction = self.staff

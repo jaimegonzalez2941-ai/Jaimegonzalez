@@ -92,15 +92,25 @@ class Database(ClubStore):
         await self.connection.execute("PRAGMA busy_timeout=5000")
         await self.connection.executescript(SCHEMA)
         await self.connection.executescript(CLUB_SCHEMA)
-        # Additive upgrade: never rewrite or recalculate existing single-score records.
+        # Additive upgrades: never rewrite or recalculate existing club records.
         async with self.transaction() as conn:
             async with conn.execute("PRAGMA table_info(evaluations)") as cursor:
                 columns = {row["name"] for row in await cursor.fetchall()}
             for name in ("rubric_version", "scorecard", "draft_id"):
                 if name not in columns:
                     await conn.execute(f"ALTER TABLE evaluations ADD COLUMN {name} TEXT")
+            async with conn.execute("PRAGMA table_info(club_events)") as cursor:
+                event_columns = {row["name"] for row in await cursor.fetchall()}
+            for name, definition in (
+                ("revision", "INTEGER NOT NULL DEFAULT 0"),
+                ("revision_changed_at", "TEXT"),
+                ("revision_time_changed", "INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if name not in event_columns:
+                    await conn.execute(f"ALTER TABLE club_events ADD COLUMN {name} {definition}")
             await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS evaluation_draft ON evaluations(draft_id)")
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (2)")
+            await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (3)")
 
     async def close(self):
         if self.connection:

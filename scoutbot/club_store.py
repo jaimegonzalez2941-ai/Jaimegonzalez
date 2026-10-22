@@ -23,9 +23,24 @@ CREATE INDEX IF NOT EXISTS leave_lookup ON club_leave(guild_id,member_id,starts_
 CREATE TABLE IF NOT EXISTS club_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id TEXT NOT NULL, title TEXT NOT NULL,
  kind TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, timezone TEXT NOT NULL,
- cancelled INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL
+  cancelled INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 0, revision_changed_at TEXT,
+  revision_time_changed INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS events_lookup ON club_events(guild_id,starts_at);
+CREATE TABLE IF NOT EXISTS club_notification_settings (
+  guild_id TEXT PRIMARY KEY, channel_id TEXT, lead_minutes INTEGER NOT NULL DEFAULT 1440,
+  enabled_since TEXT, last_error TEXT, last_error_at TEXT
+);
+CREATE TABLE IF NOT EXISTS club_notification_deliveries (
+  guild_id TEXT NOT NULL, delivery_key TEXT NOT NULL, event_id INTEGER NOT NULL,
+  kind TEXT NOT NULL, revision INTEGER NOT NULL, starts_at TEXT NOT NULL,
+  status TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 1,
+  last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+  PRIMARY KEY(guild_id,delivery_key)
+);
+CREATE INDEX IF NOT EXISTS notification_delivery_status
+  ON club_notification_deliveries(guild_id,status,updated_at);
 CREATE TABLE IF NOT EXISTS club_roster (
  guild_id TEXT NOT NULL, event_id INTEGER NOT NULL, member_id TEXT NOT NULL,
  response TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -43,6 +58,197 @@ CREATE TABLE IF NOT EXISTS club_branding (bot_id TEXT PRIMARY KEY, digest TEXT N
 
 
 class ClubStore:
+    async def notification_settings(self, guild):
+        row = await self.one(
+            "SELECT * FROM club_notification_settings WHERE guild_id=?", (str(guild),))
+        if row:
+            return row
+        return {
+            "guild_id": str(guild), "channel_id": None, "lead_minutes": 1440,
+            "enabled_since": None, "last_error": None, "last_error_at": None,
+        }
+
+    async def set_notification_settings(self, guild, actor, channel_id, lead_minutes):
+        if not 5 <= lead_minutes <= 10080:
+            raise ValueError("Reminder lead time must be between 5 minutes and 7 days.")
+        async with self.transaction() as conn:
+            async with conn.execute(
+                "SELECT channel_id,enabled_since FROM club_notification_settings WHERE guild_id=?",
+                (str(guild),)) as cur:
+                previous = await cur.fetchone()
+            enabled_since = None
+            if channel_id is not None:
+                enabled_since = stamp(utc_now())
+                if (previous and previous["channel_id"] == str(channel_id)
+                        and previous["enabled_since"] is not None):
+                    enabled_since = previous["enabled_since"]
+            await conn.execute(
+                """INSERT INTO club_notification_settings
+                (guild_id,channel_id,lead_minutes,enabled_since,last_error,last_error_at)
+                VALUES (?,?,?,?,NULL,NULL)
+                ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,
+                lead_minutes=excluded.lead_minutes,enabled_since=excluded.enabled_since,
+                last_error=NULL,last_error_at=NULL""",
+                (str(guild), str(channel_id) if channel_id is not None else None,
+                 lead_minutes, enabled_since))
+            await self._audit(conn, guild, actor, "notifications.configured",
+                              {"enabled": channel_id is not None, "lead_minutes": lead_minutes})
+
+    async def notification_candidates(self, now=None):
+        current_dt = now or utc_now()
+        current = stamp(current_dt)
+        retry_before = stamp(current_dt - timedelta(minutes=15))
+        settings = await self.all(
+            "SELECT * FROM club_notification_settings WHERE channel_id IS NOT NULL "
+            "AND enabled_since IS NOT NULL")
+        candidates = []
+        for config in settings:
+            guild = config["guild_id"]
+            reminder_rows = await self.all(
+                """SELECT e.* FROM club_events e
+                WHERE e.guild_id=? AND e.cancelled=0 AND e.starts_at>?
+                AND e.starts_at<=?
+                AND NOT EXISTS (
+                  SELECT 1 FROM club_notification_deliveries d
+                  WHERE d.guild_id=e.guild_id AND d.delivery_key=
+                    'reminder:' || e.id || ':' || e.starts_at
+                    AND (d.status IN ('sent','sending','uncertain','obsolete')
+                      OR (d.status='failed' AND d.updated_at>?))
+                ) ORDER BY e.starts_at""",
+                (guild, current, stamp(current_dt + timedelta(minutes=config["lead_minutes"])),
+                 retry_before))
+            for event in reminder_rows:
+                candidates.append({
+                    "guild_id": guild, "channel_id": config["channel_id"], "event": event,
+                    "kind": "reminder",
+                    "delivery_key": f'reminder:{event["id"]}:{event["starts_at"]}',
+                })
+            notice_rows = await self.all(
+                """SELECT e.* FROM club_events e
+                WHERE e.guild_id=? AND e.revision>0 AND e.revision_changed_at>=?
+                AND NOT EXISTS (
+                  SELECT 1 FROM club_notification_deliveries d
+                  WHERE d.guild_id=e.guild_id
+                  AND d.delivery_key='notice:' || e.id || ':' || e.revision
+                    AND (d.status IN ('sent','sending','uncertain','obsolete')
+                      OR (d.status='failed' AND d.updated_at>?))
+                ) ORDER BY e.revision_changed_at""",
+                (guild, config["enabled_since"], retry_before))
+            for event in notice_rows:
+                candidates.append({
+                    "guild_id": guild, "channel_id": config["channel_id"], "event": event,
+                    "kind": "cancelled" if event["cancelled"] else "edited",
+                    "delivery_key": f'notice:{event["id"]}:{event["revision"]}',
+                })
+        return candidates
+
+    async def claim_notification(self, guild, channel, event_id, kind, delivery_key,
+                                 revision, starts_at, *, now=None):
+        current = stamp(now or utc_now())
+        async with self.transaction() as conn:
+            async with conn.execute(
+                "SELECT * FROM club_notification_settings WHERE guild_id=?", (str(guild),)) as cur:
+                config = await cur.fetchone()
+            async with conn.execute(
+                "SELECT * FROM club_events WHERE guild_id=? AND id=?",
+                (str(guild), event_id)) as cur:
+                event = await cur.fetchone()
+            valid_config = (config and config["channel_id"] == str(channel)
+                            and config["enabled_since"] is not None)
+            valid_event = event is not None and event["revision"] == revision
+            if kind == "reminder":
+                valid_event = bool(valid_event and not event["cancelled"]
+                    and event["starts_at"] == starts_at and event["starts_at"] > current
+                    and event["starts_at"] <= stamp(
+                        (now or utc_now()) + timedelta(minutes=config["lead_minutes"])
+                        if valid_config else utc_now()))
+            else:
+                expected_kind = "cancelled" if event and event["cancelled"] else "edited"
+                valid_event = bool(valid_config and valid_event and expected_kind == kind
+                                   and event["revision_changed_at"] is not None
+                                   and event["revision_changed_at"] >= config["enabled_since"])
+            async with conn.execute(
+                "SELECT * FROM club_notification_deliveries WHERE guild_id=? AND delivery_key=?",
+                (str(guild), delivery_key)) as cur:
+                delivery = await cur.fetchone()
+            if not valid_config or not valid_event:
+                if delivery is None:
+                    await conn.execute(
+                        """INSERT INTO club_notification_deliveries
+                        (guild_id,delivery_key,event_id,kind,revision,starts_at,status,created_at,updated_at)
+                        VALUES (?,?,?,?,?,?,'obsolete',?,?)""",
+                        (str(guild), delivery_key, event_id, kind, revision, starts_at, current, current))
+                elif delivery["status"] == "failed":
+                    await conn.execute(
+                        """UPDATE club_notification_deliveries SET status='obsolete',updated_at=?
+                        WHERE guild_id=? AND delivery_key=?""",
+                        (current, str(guild), delivery_key))
+                return None
+            if delivery and delivery["status"] in ("sent", "sending", "uncertain", "obsolete"):
+                return None
+            if delivery and delivery["updated_at"] > stamp((now or utc_now()) - timedelta(minutes=15)):
+                return None
+            if delivery:
+                await conn.execute(
+                    """UPDATE club_notification_deliveries SET status='sending',attempts=attempts+1,
+                    last_error=NULL,updated_at=? WHERE guild_id=? AND delivery_key=?""",
+                    (current, str(guild), delivery_key))
+            else:
+                await conn.execute(
+                    """INSERT INTO club_notification_deliveries
+                    (guild_id,delivery_key,event_id,kind,revision,starts_at,status,created_at,updated_at)
+                    VALUES (?,?,?,?,?,?,'sending',?,?)""",
+                    (str(guild), delivery_key, event_id, kind, revision, starts_at, current, current))
+            return True
+
+    async def validate_notification(self, guild, channel, event_id, kind, delivery_key,
+                                    revision, starts_at, *, now=None):
+        current = stamp(now or utc_now())
+        settings = await self.notification_settings(guild)
+        event = await self.event(guild, event_id)
+        valid = (settings["channel_id"] == str(channel)
+                 and settings["enabled_since"] is not None)
+        if kind == "reminder":
+            valid = bool(valid and not event["cancelled"] and event["revision"] == revision
+                         and event["starts_at"] == starts_at and event["starts_at"] > current
+                         and event["starts_at"] <= stamp(
+                             (now or utc_now()) + timedelta(minutes=settings["lead_minutes"])))
+        else:
+            expected_kind = "cancelled" if event["cancelled"] else "edited"
+            valid = bool(valid and expected_kind == kind and event["revision"] == revision
+                         and event["revision_changed_at"] >= settings["enabled_since"])
+        delivery = await self.one(
+            "SELECT status FROM club_notification_deliveries WHERE guild_id=? AND delivery_key=?",
+            (str(guild), delivery_key))
+        if not valid or not delivery or delivery["status"] != "sending":
+            if delivery and delivery["status"] == "sending":
+                async with self.transaction() as conn:
+                    await conn.execute(
+                        """UPDATE club_notification_deliveries SET status='obsolete',updated_at=?
+                        WHERE guild_id=? AND delivery_key=? AND status='sending'""",
+                        (current, str(guild), delivery_key))
+            return None
+        return event
+
+    async def finish_notification(self, guild, delivery_key, *, status, error=None):
+        if status not in ("sent", "failed", "uncertain"):
+            raise ValueError("Invalid notification delivery status.")
+        async with self.transaction() as conn:
+            await conn.execute(
+                """UPDATE club_notification_deliveries SET status=?,last_error=?,updated_at=?
+                WHERE guild_id=? AND delivery_key=? AND status='sending'""",
+                (status, str(error)[:500] if error else None, stamp(utc_now()),
+                 str(guild), delivery_key))
+            if error:
+                await conn.execute(
+                    """UPDATE club_notification_settings SET last_error=?,last_error_at=?
+                    WHERE guild_id=?""",
+                    (str(error)[:500], stamp(utc_now()), str(guild)))
+            elif status == "sent":
+                await conn.execute(
+                    "UPDATE club_notification_settings SET last_error=NULL,last_error_at=NULL WHERE guild_id=?",
+                    (str(guild),))
+
     async def policy(self, guild):
         return await self.one("SELECT days,minimum,percent FROM club_policy WHERE guild_id=?",
                               (str(guild),)) or dict(DEFAULT_POLICY)
@@ -155,17 +361,28 @@ class ClubStore:
                 "UPDATE club_events SET title=?,starts_at=?,ends_at=?,timezone=? WHERE guild_id=? AND id=?",
                 (title.strip(), start, end, timezone_name, str(guild), identifier))
             changed = row["starts_at"] != start or row["ends_at"] != end
+            meaningful = (changed or row["title"] != title.strip()
+                          or row["timezone"] != timezone_name)
             if changed:
                 await conn.execute("UPDATE club_roster SET response='pending',updated_at=? WHERE guild_id=? AND event_id=?",
                                    (stamp(utc_now()), str(guild), identifier))
+            if meaningful:
+                await conn.execute(
+                    """UPDATE club_events SET revision=revision+1,revision_changed_at=?,
+                    revision_time_changed=? WHERE guild_id=? AND id=?""",
+                    (stamp(utc_now()), int(changed), str(guild), identifier))
             await self._audit(conn, guild, actor, "session.edited",
-                              {"id": identifier, "reconfirmation_required": changed})
+                              {"id": identifier, "reconfirmation_required": changed,
+                               "notification_revision_created": meaningful})
         return changed
 
     async def cancel_event(self, guild, actor, identifier):
         async with self.transaction() as conn:
-            cur = await conn.execute("UPDATE club_events SET cancelled=1 WHERE guild_id=? AND id=?",
-                                     (str(guild), identifier))
+            cur = await conn.execute(
+                """UPDATE club_events SET cancelled=1,revision=revision+1,
+                revision_changed_at=?,revision_time_changed=0
+                WHERE guild_id=? AND id=? AND cancelled=0""",
+                (stamp(utc_now()), str(guild), identifier))
             changed = cur.rowcount
             await cur.close()
             if not changed:

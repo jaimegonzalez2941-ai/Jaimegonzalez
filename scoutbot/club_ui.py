@@ -90,7 +90,7 @@ async def club_help(interaction: discord.Interaction):
         "`/schedule rsvp` · Yes / maybe / no before kickoff\n"
         "`/attendance report` · Your attendance\n\n"
         "**Staff**\n"
-        "`/schedule create`, `edit`, `cancel`, `assign`, `roster`\n"
+        "`/schedule create`, `edit`, `cancel`, `assign`, `roster`, `notifications`\n"
         "`/availability roster`, `review_leave`\n"
         "`/attendance mark` · Present / late / absent / excused / unmarked\n"
         "`/promotion review` · Combined performance and attendance\n"

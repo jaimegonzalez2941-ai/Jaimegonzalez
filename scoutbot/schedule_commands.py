@@ -15,6 +15,59 @@ class ScheduleCommands(MemberGroup):
         super().__init__(name="schedule", description="Club sessions, RSVPs, and staff roster management")
         self.bot = bot
 
+    @app_commands.command(description="Staff: configure session notices and reminders")
+    @app_commands.describe(
+        channel="Text channel for session reminders and change notices",
+        lead_hours="How many hours before a session to post its reminder",
+        disable="Turn off reminders and session notices",
+    )
+    async def notifications(self, interaction: discord.Interaction,
+                            channel: discord.TextChannel | None = None,
+                            lead_hours: app_commands.Range[int, 1, 168] | None = None,
+                            disable: bool = False):
+        await staff_access(interaction)
+        if disable and channel is not None:
+            raise ValueError("Choose either a notification channel or disable notifications, not both.")
+        if disable:
+            current = await self.bot.db.notification_settings(interaction.guild_id)
+            await self.bot.db.set_notification_settings(
+                interaction.guild_id, interaction.user.id, None, current["lead_minutes"])
+            await interaction.response.send_message(
+                "Session reminders and change notices are off.", ephemeral=True)
+            return
+        if channel is None:
+            current = await self.bot.db.notification_settings(interaction.guild_id)
+            if current["channel_id"] is None:
+                status = "Notifications are **off**. Set a channel to enable them."
+            else:
+                target = interaction.guild.get_channel(int(current["channel_id"]))
+                status = (f"Notifications are **on** in {target.mention if target else '#' + current['channel_id']} "
+                          f"with a {current['lead_minutes'] // 60}h reminder lead time.")
+                if target is None or interaction.guild.me is None:
+                    status += "\nI cannot currently verify access to that channel."
+                else:
+                    permissions = target.permissions_for(interaction.guild.me)
+                    if not permissions.view_channel or not permissions.send_messages:
+                        status += "\n**Action needed:** grant me View Channel and Send Messages there."
+                if current["last_error"]:
+                    status += f'\n**Last delivery problem:** {current["last_error"]}'
+            await interaction.response.send_message(status, ephemeral=True)
+            return
+        if interaction.guild.me is None:
+            raise ValueError("I cannot verify my server permissions right now. Try again shortly.")
+        permissions = channel.permissions_for(interaction.guild.me)
+        if not permissions.view_channel or not permissions.send_messages:
+            raise ValueError("I need View Channel and Send Messages in the selected channel before enabling notifications.")
+        current = await self.bot.db.notification_settings(interaction.guild_id)
+        hours = lead_hours if lead_hours is not None else max(1, current["lead_minutes"] // 60)
+        await self.bot.db.set_notification_settings(
+            interaction.guild_id, interaction.user.id, channel.id, hours * 60)
+        await interaction.response.send_message(
+            f"Session reminders and change notices are on in {channel.mention}. "
+            f"Reminders are sent {hours} hour(s) before each session. "
+            "Use `/schedule notifications disable:True` to turn them off.",
+            ephemeral=True)
+
     @app_commands.command(description="Staff: create a training, match, or trial session")
     @app_commands.choices(kind=[app_commands.Choice(name=k.title(), value=k) for k in ("training", "match", "trial")])
     @app_commands.describe(date="YYYY-MM-DD", time="24-hour HH:MM",

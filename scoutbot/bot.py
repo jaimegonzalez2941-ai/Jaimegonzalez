@@ -4,7 +4,7 @@ import logging
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from .commands import ScoutCommands
 from .availability_commands import AvailabilityCommands
@@ -18,6 +18,7 @@ from .domain import source_allowed
 from .ingestion import import_message
 from .parser import RecapFormatError
 from .views import DocketView, respond_error
+from .notification_worker import deliver_due_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -65,9 +66,21 @@ class ScoutBot(commands.Bot):
             synced = await self.tree.sync()
             logger.info("Synced %d global command groups.", len(synced))
         await apply_branding(self)
+        if not self.notification_worker.is_running():
+            self.notification_worker.start()
+
+    @tasks.loop(seconds=60)
+    async def notification_worker(self):
+        await deliver_due_notifications(self)
+
+    @notification_worker.before_loop
+    async def wait_for_notification_ready(self):
+        await self.wait_until_ready()
 
     async def close(self):
         try:
+            if self.notification_worker.is_running():
+                self.notification_worker.cancel()
             await super().close()
         finally:
             await self.db.close()

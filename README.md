@@ -35,6 +35,7 @@ Run `/club` for the full command guide. Club-operation responses are private to 
 - `/schedule create title kind date time timezone minutes` creates a **training**, **match**, or **trial** session. Duration defaults to 90 minutes (15–720 allowed). Session times display through Discord timestamps in each viewer's local timezone.
 - `/schedule edit` updates an upcoming session. Changing start or end time resets **all RSVPs and assignments to pending**, so old commitments cannot count against a player at a new time. A title-only edit preserves commitments.
 - `/schedule cancel session_id confirm:True` cancels and excludes the session without deleting its records.
+- `/schedule notifications channel [lead_hours]` opts the server in to one public session-notice channel and one reminder lead time (1–168 hours; default 24). `/schedule notifications` shows the current setting and any known delivery problem. Use `disable:True` to turn notifications off; they are off until a manager configures them.
 - `/schedule assign session_id member` assigns a player before kickoff; `release:True` releases them to pending. `/schedule roster session_id` shows RSVP, attendance, and approved-leave conflicts.
 - `/attendance mark session_id member status` marks **present**, **late**, **absent**, **excused**, or **unmarked** after kickoff. Repeating it corrects the previous mark, rather than duplicating attendance, and records an audit event. Only players who committed yes or were assigned before kickoff can be marked.
 
@@ -55,7 +56,15 @@ The starting standard is **80% attendance over the last 30 days, at least five m
 - `/promotion policy percent days minimum_sessions` lets a server manager adjust requirements for the club's availability. Bounds are 1–100%, 1–365 days, and 1–100 sessions. Existing scores and marks are retained.
 - `/scout assign` still requires staff plus Manage Roles and all existing role safety checks. Initial Trialist placement is allowed without an attendance history. Assigning Academia Prospect or First Team Roster without the evidence minimums requires a deliberate **10–500 character `override_reason`**; evidence, policy, and reason are audited. Staff remain responsible for advancement and role changes. Prior roles are not automatically removed.
 
-These commands do not send scheduled reminders, publish public rosters, track voice-channel presence, or infer attendance automatically. Attendance is a staff-recorded record, not independently verified activity.
+### Session reminders and notices
+
+Notifications are opt-in and configured separately for each server. The bot needs **View Channel** and **Send Messages** in the selected channel. It checks for due messages about once a minute and posts one reminder when an active upcoming session enters the configured lead window. Meaningful edits and cancellations produce a session-only notice; a time change explicitly says existing RSVPs must be reconfirmed.
+
+Posts contain the session title, type, and Discord-localized start/end times only. They never include player names, RSVP/roster information, or member/everyone mentions. Notices and reminders are visible to anyone who can read the selected channel. A manager can check the current setting and last known delivery issue with `/schedule notifications`; missing channel access is logged and shown there.
+
+Delivery records persist across reconnects and restarts. A changed session time invalidates the old reminder; cancelled sessions are not reminded, and superseded edits are discarded. Discord does not offer a transaction spanning message delivery and the local database, so strict exactly-once delivery is impossible: confirmed sends are suppressed, while an interrupted send with an unknown outcome is not automatically repeated to avoid a duplicate. Definite send failures may be retried after 15 minutes.
+
+The bot does not send direct messages, mention members, publish rosters, track voice-channel presence, or infer attendance automatically. Attendance remains a staff-recorded record, not independently verified activity.
 
 ## Trusted recap format
 

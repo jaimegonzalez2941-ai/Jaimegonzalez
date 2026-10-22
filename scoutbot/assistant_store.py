@@ -168,7 +168,7 @@ class AssistantStore:
                               {"id": identifier, "outcome": outcome, "before": dict(row)})
             return True
 
-    async def staff_records(self, guild, kind, status="active", *, member=None, now=None):
+    def staff_record_query(self, guild, kind, status="active", *, member=None, now=None):
         if kind not in ("recruitment", "goal", "task"):
             raise ValueError("Unknown staff record kind.")
         if status not in ("active", "overdue", "completed", "archived", "all"):
@@ -183,7 +183,15 @@ class AssistantStore:
         if member is not None:
             sql += " AND member_id=?"
             args.append(str(member))
-        return await self.all(sql + " ORDER BY due_at,id", args)
+        return sql + " ORDER BY due_at,id", args
+
+    async def staff_records(self, guild, kind, status="active", *, member=None, now=None):
+        return await self.all(*self.staff_record_query(
+            guild, kind, status, member=member, now=now))
+
+    def iter_staff_records(self, guild, kind, status="active", *, member=None, now=None):
+        return self.rows(*self.staff_record_query(
+            guild, kind, status, member=member, now=now))
 
     async def latest_position_evaluation(self, guild, member, position):
         if position not in POSITIONS:
@@ -205,11 +213,12 @@ class AssistantStore:
             ON l.guild_id=s.guild_id AND l.handle_key=s.handle_key
             WHERE s.guild_id=? AND l.discord_id=?""", (str(guild), str(member)))
 
-    async def staff_brief(self, guild, *, now=None):
+    async def staff_brief(self, guild, *, now=None, streamed=False):
         now = now or utc_now()
         current, end = stamp(now), stamp(now + timedelta(days=7))
         policy = await self.policy(guild)
-        sessions = await self.all(
+        queries = []
+        queries.append((
             """SELECT e.*,
             (SELECT COUNT(*) FROM club_roster r WHERE r.guild_id=e.guild_id
               AND r.event_id=e.id AND r.response='yes') AS yes_count,
@@ -223,11 +232,11 @@ class AssistantStore:
               AND r.event_id=e.id AND r.response='pending') AS pending_count
             FROM club_events e WHERE e.guild_id=? AND e.cancelled=0
             AND e.starts_at>=? AND e.starts_at<? ORDER BY e.starts_at,e.id""",
-            (str(guild), current, end))
-        leave = await self.all(
+            (str(guild), current, end)))
+        queries.append((
             """SELECT id,member_id,starts_at,ends_at FROM club_leave
-            WHERE guild_id=? AND status='pending' ORDER BY starts_at,id""", (str(guild),))
-        gaps = await self.all(
+            WHERE guild_id=? AND status='pending' ORDER BY starts_at,id""", (str(guild),)))
+        queries.append((
             """SELECT e.id,e.title,e.starts_at,r.member_id FROM club_events e
             JOIN club_roster r ON r.guild_id=e.guild_id AND r.event_id=e.id
             LEFT JOIN club_attendance a ON a.guild_id=r.guild_id AND a.event_id=r.event_id
@@ -238,9 +247,11 @@ class AssistantStore:
               AND l.member_id=r.member_id AND l.status='approved'
               AND l.starts_at<e.ends_at AND l.ends_at>e.starts_at)
             ORDER BY e.starts_at,e.id,r.member_id""",
-            (str(guild), stamp(now - timedelta(days=policy["days"])), current))
-        followups = await self.all(
+            (str(guild), stamp(now - timedelta(days=policy["days"])), current)))
+        queries.append((
             """SELECT * FROM staff_records WHERE guild_id=? AND status='active'
-            AND due_at<? ORDER BY due_at,id""", (str(guild), end))
-        return {"now": current, "end": end, "policy": policy, "sessions": sessions,
-                "leave": leave, "gaps": gaps, "followups": followups}
+            AND due_at<? ORDER BY due_at,id""", (str(guild), end)))
+        data = {"now": current, "end": end, "policy": policy}
+        for key, (sql, args) in zip(("sessions", "leave", "gaps", "followups"), queries):
+            data[key] = self.rows(sql, args) if streamed else await self.all(sql, args)
+        return data

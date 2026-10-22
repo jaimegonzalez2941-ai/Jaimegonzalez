@@ -120,8 +120,21 @@ board, AI service, automatic role change or score recalculation.
 
 All commands below require the configured scouting staff role or **Manage Server**, including
 every pagination button. Replies are ephemeral, escaped, length-limited and cannot ping anyone.
-Pagination belongs to the requesting staff member and server; after ten minutes, rerun the
-command for a fresh snapshot. IDs are local to this server. Staff records and audit entries
+Pagination belongs to the requesting staff member and server. Player dossiers, recruitment
+boards, goal/task lists and briefings read a consistent snapshot opened with the command:
+new records, changed deadlines/owners, completions, handle links, roster/leave changes and
+policy edits do not alter pages already being browsed. **Refresh** opens a new snapshot and
+returns to page one, including newly matching records; each snapshot expires after ten
+minutes even while browsing. After expiry, rerun the command. All navigation and refresh
+buttons recheck current staff access, requesting user and server.
+
+Records are read in bounded batches and pages are built only as requested, with stable
+date/ID ordering (attendance gaps also use player ID). Full saved notes and evidence remain
+reachable across pages; there is no record cap. Previous pages use a private, temporary
+disk cache rather than retaining the history in memory. Snapshot readers and page caches
+are released on expiry, refresh, failed opening or shutdown; the SQLite WAL can grow during
+an active snapshot, so the ten-minute lifetime is bounded. No snapshot or page cache is
+retained across restart. IDs are local to this server. Staff records and audit entries
 survive restart in the existing SQLite database; migrations are additive.
 
 Recruitment, goal and task assignees must currently be staff or managers, not bots. The bot

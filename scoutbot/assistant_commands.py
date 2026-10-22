@@ -5,7 +5,8 @@ from discord import app_commands
 
 from .access import staff_access, staff_assignee
 from .assistant_store import deadline
-from .assistant_ui import briefing_blocks, record_blocks, send_pages
+from .assistant_ui import briefing_stream, records_stream
+from .workspace_pages import send_workspace
 from .domain import POSITIONS
 
 POSITION_CHOICES = [app_commands.Choice(name=p, value=p) for p in POSITIONS]
@@ -81,14 +82,9 @@ class ShortlistCommands(StaffGroup):
     async def list(self, interaction: discord.Interaction, status: str = "active"):
         await staff_access(interaction)
         await interaction.response.defer(ephemeral=True)
-        rows = await self.bot.db.staff_records(interaction.guild_id, "recruitment", status)
-        blocks = ["Explicit staff-managed recruitment board. Review dates are follow-up deadlines, "
-                  "not automatic player decisions."]
-        for row in rows:
-            blocks.extend(record_blocks(row))
-        if not rows:
-            blocks.append("No recruitment entries for this filter.")
-        await send_pages(interaction, "Recruitment board · " + status, blocks)
+        guild = interaction.guild_id
+        await send_workspace(interaction, "Recruitment board · " + status,
+                             lambda db: records_stream(db, guild, "recruitment", status))
 
     @app_commands.command(description="Archive a recruitment follow-up with explicit confirmation; retain its history")
     async def remove(self, interaction: discord.Interaction,
@@ -146,14 +142,9 @@ class DevelopmentCommands(StaffGroup):
         if member:
             player(member)
         await interaction.response.defer(ephemeral=True)
-        rows = await self.bot.db.staff_records(interaction.guild_id, "goal", status,
-                                               member=member.id if member else None)
-        blocks = ["Goal completion is a staff observation, not automatic proof of improvement or a score change."]
-        for row in rows:
-            blocks.extend(record_blocks(row))
-        if not rows:
-            blocks.append("No development goals for this filter.")
-        await send_pages(interaction, "Development goals · " + status, blocks)
+        guild, member_id = interaction.guild_id, member.id if member else None
+        await send_workspace(interaction, "Development goals · " + status,
+                             lambda db: records_stream(db, guild, "goal", status, member=member_id))
 
     @app_commands.command(description="Complete a goal with a required observed outcome note; scores remain unchanged")
     async def complete(self, interaction: discord.Interaction, goal_id: app_commands.Range[int, 1],
@@ -199,13 +190,9 @@ class TaskCommands(StaffGroup):
     async def list(self, interaction: discord.Interaction, status: str = "active"):
         await staff_access(interaction)
         await interaction.response.defer(ephemeral=True)
-        rows = await self.bot.db.staff_records(interaction.guild_id, "task", status)
-        blocks = ["Private staff tasks; deadlines do not trigger automatic actions."]
-        for row in rows:
-            blocks.extend(record_blocks(row))
-        if not rows:
-            blocks.append("No staff tasks for this filter.")
-        await send_pages(interaction, "Staff tasks · " + status, blocks)
+        guild = interaction.guild_id
+        await send_workspace(interaction, "Staff tasks · " + status,
+                             lambda db: records_stream(db, guild, "task", status))
 
     @app_commands.command(description="Complete a task once, retaining the accountable owner and completion record")
     async def complete(self, interaction: discord.Interaction, task_id: app_commands.Range[int, 1],
@@ -229,5 +216,6 @@ class AssistantCommands(StaffGroup):
     async def brief(self, interaction: discord.Interaction):
         await staff_access(interaction)
         await interaction.response.defer(ephemeral=True)
-        data = await self.bot.db.staff_brief(interaction.guild_id)
-        await send_pages(interaction, "Coach and owner briefing", briefing_blocks(data))
+        guild = interaction.guild_id
+        await send_workspace(interaction, "Coach and owner briefing",
+                             lambda db: briefing_stream(db, guild))

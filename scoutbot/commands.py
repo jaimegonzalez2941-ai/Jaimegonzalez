@@ -13,7 +13,8 @@ from .ingestion import import_message
 from . import presentation as ui
 from .views import DocketView, HistoryView, PositionView
 from .assistant_commands import ShortlistCommands, POSITION_CHOICES, player
-from .assistant_ui import comparison_blocks, dossier_blocks, send_pages
+from .assistant_ui import comparison_blocks, dossier_stream, send_pages
+from .workspace_pages import send_workspace
 
 STAGE_CHOICES = [app_commands.Choice(name=s, value=s) for s in STAGES]
 
@@ -34,8 +35,9 @@ class ScoutCommands(app_commands.Group):
         await staff_access(interaction)
         player(member)
         await interaction.response.defer(ephemeral=True)
-        await send_pages(interaction, "Player dossier",
-                         await dossier_blocks(self.bot.db, interaction.guild_id, member))
+        guild = interaction.guild_id
+        await send_workspace(interaction, "Player dossier",
+                             lambda db: dossier_stream(db, guild, member))
 
     @app_commands.command(description="Compare latest saved position evaluations; compatible rubric evidence only")
     @app_commands.choices(position=POSITION_CHOICES)

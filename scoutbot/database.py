@@ -83,6 +83,7 @@ class Database(ClubStore, AssistantStore):
         self.path = path
         self.lock = asyncio.Lock()
         self.connection: aiosqlite.Connection | None = None
+        self.workspace_views = set()
 
     async def open(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +117,8 @@ class Database(ClubStore, AssistantStore):
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (4)")
 
     async def close(self):
+        for view in tuple(self.workspace_views):
+            await view.on_timeout()
         if self.connection:
             await self.connection.close()
             self.connection = None
@@ -130,6 +133,15 @@ class Database(ClubStore, AssistantStore):
         async with self.lock:
             async with self.conn.execute(sql, args) as cursor:
                 return [dict(row) for row in await cursor.fetchall()]
+
+    async def rows(self, sql: str, args=()):
+        """Bounded live reads; workspace continuations use WorkspaceSnapshot instead."""
+        from .workspace_snapshot import BATCH_SIZE
+        async with self.lock:
+            async with self.conn.execute(sql, args) as cursor:
+                while batch := await cursor.fetchmany(BATCH_SIZE):
+                    for row in batch:
+                        yield dict(row)
 
     async def one(self, sql: str, args=()) -> dict | None:
         rows = await self.all(sql, args)

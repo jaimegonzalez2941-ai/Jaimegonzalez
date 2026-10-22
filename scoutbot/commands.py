@@ -77,13 +77,13 @@ class ScoutCommands(app_commands.Group):
             webhook_id = webhook_id.strip()
             if not webhook_id.isdecimal() or not 15 <= len(webhook_id) <= 22:
                 raise ValueError("Enter only the webhook's numeric ID, never its URL or token.")
-        private_channel(staff_channel, staff_role)
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await private_channel(staff_channel, staff_role)
         if not staff_channel.permissions_for(staff_role).view_channel:
             raise ValueError("The staff role must be able to view the staff channel.")
         recap_permissions = recap_channel.permissions_for(interaction.guild.me)
         if not recap_permissions.view_channel or not recap_permissions.read_message_history:
             raise ValueError("The bot needs View Channel and Read Message History in the recap channel.")
-        await interaction.response.defer(ephemeral=True, thinking=True)
         await self.bot.db.configure(
             interaction.guild.id, interaction.user.id,
             staff_role=staff_role.id, staff_channel=staff_channel.id,
@@ -199,8 +199,8 @@ class ScoutCommands(app_commands.Group):
         role = interaction.guild.get_role(int(config["staff_role"]))
         if not isinstance(channel, discord.TextChannel) or role is None:
             raise ValueError("The configured channel or staff role is missing. Run /scout setup again.")
-        private_channel(channel, role)
         await interaction.response.defer(ephemeral=True, thinking=True)
+        await private_channel(channel, role)
         result = ui.docket(await self.bot.db.recent(interaction.guild.id))
         old = await self.bot.db.one(
             "SELECT message_id FROM dockets WHERE guild_id=? AND channel_id=?",

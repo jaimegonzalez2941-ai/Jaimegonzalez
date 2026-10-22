@@ -1,5 +1,8 @@
 """Permission checks shared by commands, buttons, and modals."""
 
+import asyncio
+
+import aiohttp
 import discord
 from discord import app_commands
 
@@ -50,36 +53,82 @@ def permission_entry(target):
     elif isinstance(target, discord.Member):
         kind, name = "member", target.display_name
     else:
-        return f"unresolved member entry (ID {target.id})"
+        kind = "role" if isinstance(target, discord.Object) and target.type is discord.Role else "member"
+        return f"unresolved {kind} entry (ID {target.id})"
     name = discord.utils.escape_markdown(discord.utils.escape_mentions(" ".join(str(name).split())[:100]))
     return f'{kind} "{name}" (ID {target.id})'
 
 
-def private_channel(channel: discord.TextChannel, staff_role: discord.Role):
-    """Fail closed when explicit overwrites allow a non-staff audience."""
+async def resolve_permission_member(guild, target, deadline):
+    """Verify one uncached viewer over REST without enumerating guild members."""
+    try:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise TimeoutError
+        async with asyncio.timeout(remaining):
+            current = await guild.fetch_member(target.id)
+    except discord.NotFound as error:
+        raise AccessDenied(
+            f"Staff-channel check blocked by a stale member entry (ID {target.id}). "
+            "Discord says this account is no longer in this server. Remove its entry from "
+            "the staff channel's Permissions, then try again. No permissions have been changed."
+        ) from error
+    except (discord.HTTPException, aiohttp.ClientError, TimeoutError, ConnectionError) as error:
+        raise AccessDenied(
+            f"Discord could not verify the staff-channel member entry (ID {target.id}) right now. "
+            "Access remains unverified. Try again shortly; do not grant Administrator or make "
+            "the channel public. No permissions have been changed."
+        ) from error
+    if (
+        not isinstance(current, discord.Member)
+        or current.id != target.id
+        or current.guild.id != guild.id
+    ):
+        raise AccessDenied(
+            f"Discord did not return a matching member of this server for entry ID {target.id}. "
+            "The staff-channel check remains blocked. Try again or review that permission entry."
+        )
+    return current
+
+
+async def private_channel(channel: discord.TextChannel, staff_role: discord.Role):
+    """Verify explicit viewers, failing closed on unsafe or unverifiable access."""
+    if staff_role.guild.id != channel.guild.id:
+        raise AccessDenied("Choose a staff role and staff channel from the same server.")
     if channel.overwrites_for(channel.guild.default_role).view_channel is not False:
         raise AccessDenied("The staff channel must explicitly deny View Channel to @everyone.")
     me = channel.guild.me
     if me is None:
         raise AccessDenied("The bot's server membership is unavailable. Try again shortly.")
+    # One total lookup budget, not a fresh timeout for every permission entry.
+    deadline = asyncio.get_running_loop().time() + 8
     for target, overwrite in channel.overwrites.items():
         if overwrite.view_channel is not True:
             continue
+        if (
+            isinstance(target, discord.Object)
+            and target.type in (discord.User, discord.Member)
+            and target.id != me.id
+        ):
+            target = await resolve_permission_member(channel.guild, target, deadline)
         if target.id == me.id:
             allowed = True
         elif isinstance(target, discord.Role):
-            allowed = (
-                target.id == staff_role.id
+            own_bot_role = (
+                target.managed and target.tags is not None
+                and target.tags.bot_id == me.id
+            )
+            allowed = target.guild.id == channel.guild.id and (
+                own_bot_role or target.id == staff_role.id
                 or target.permissions.administrator or target.permissions.manage_guild
             )
         elif isinstance(target, discord.Member):
-            allowed = (
+            allowed = target.guild.id == channel.guild.id and (
                 target.guild_permissions.manage_guild
                 or staff_role in target.roles
             )
         else:
-            # discord.py may represent an uncached former member's overwrite as
-            # discord.Object. Never treat an unknown target as a verified member.
+            # Missing roles and untyped objects cannot be resolved as members.
             allowed = False
         if not allowed:
             raise AccessDenied(

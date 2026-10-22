@@ -207,8 +207,8 @@ class DocketView(SecureView):
         staff = interaction.guild.get_role(int(config["staff_role"]))
         if staff is None or not isinstance(interaction.channel, discord.TextChannel):
             raise AccessDenied("The configured staff role or channel is unavailable.")
-        private_channel(interaction.channel, staff)
         await interaction.response.defer()
+        await private_channel(interaction.channel, staff)
         rows = await interaction.client.db.recent(interaction.guild.id)
         await interaction.edit_original_response(embed=ui.docket(rows), view=self)
 

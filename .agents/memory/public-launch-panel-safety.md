@@ -30,8 +30,19 @@ is not cached. It is neither a verified member nor a verified staff principal.
 **Why:** `/scout setup` reached the staff-channel privacy check and raised `AttributeError` when an
 uncached overwrite target was treated like a `Member`.
 
-**How to apply:** Handle overwrite targets by known Discord type. Fail closed on unresolved
-viewer grants and tell the manager to remove or verify the stale member override.
+**How to apply:** Handle overwrite targets by known Discord type. An uncached member may be
+legitimate staff: verify that individual against Discord within a bounded request budget before
+deciding. A missing role cannot be resolved as a member. Keep unknown or unauthorized viewers
+blocked, and acknowledge the interaction before any network verification.
+
+Club Agent's own Discord-managed bot role is a safe viewer only when authoritative Discord role
+tags identify Club Agent in the same server.
+
+**Why:** Giving the bot access through its own managed role should not make a private staff
+channel fail validation or force a manager to grant Administrator.
+
+**How to apply:** Do not infer exclusivity from role names or from a cached list of role members;
+ordinary shared roles and another bot's managed role still need the normal staff authorization.
 
 Permission-validation failures should identify the blocked permission entry and the selected
 staff role with bounded, mention-safe labels, not just say that an unspecified viewer is unsafe.

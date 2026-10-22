@@ -39,6 +39,10 @@ An always-on Discord bot for private FC Pro Clubs scouting, recruitment, and mat
 - Recaps require the configured source and channel; imports are atomic and idempotent.
 - Missing match metrics stay unreported instead of being stored as zero.
 - V2 uses its own SQLite database; it never modifies V1 data.
+- Position-aware scoring uses immutable `staff-v1` design defaults, not a validated predictor. See `docs/scouting-rubric.md` for weights, observable anchors, rounding and examples.
+- Incomplete/borderline scorecards remain persisted private drafts. All five categories, observed evidence, context and positive declared coverage are required to save. Reopen evaluate with the same candidate/position to resume.
+- Any rubric change requires a new version, retaining old calculation/rendering behavior. Neither raw nor rounded totals in 6.8–7.2 may be published. Legacy records are never recalculated.
+- Declared coverage, trusted imported EA statistics, human scores, and recruitment stages stay distinct; a rating never authorizes or automatically assigns a Discord role.
 
 ## Product
 

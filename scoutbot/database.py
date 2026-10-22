@@ -4,12 +4,14 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
+import uuid
 from pathlib import Path
 
 import aiosqlite
 
 from .domain import handle
 from .parser import PlayerStats
+from .rubric import VERSION, validate_payload
 
 
 def utcnow() -> str:
@@ -64,6 +66,13 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS audit_guild ON audit_log(guild_id,id DESC);
+CREATE TABLE IF NOT EXISTS evaluation_drafts (
+    id TEXT PRIMARY KEY, guild_id TEXT NOT NULL, candidate_id TEXT NOT NULL,
+    candidate_name TEXT NOT NULL, scout_id TEXT NOT NULL, scout_name TEXT NOT NULL,
+    position TEXT NOT NULL, rubric_version TEXT NOT NULL, payload TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'draft',
+    evaluation_id INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
 """
 
 
@@ -81,6 +90,15 @@ class Database:
         await self.connection.execute("PRAGMA journal_mode=WAL")
         await self.connection.execute("PRAGMA busy_timeout=5000")
         await self.connection.executescript(SCHEMA)
+        # Additive upgrade: never rewrite or recalculate existing single-score records.
+        async with self.transaction() as conn:
+            async with conn.execute("PRAGMA table_info(evaluations)") as cursor:
+                columns = {row["name"] for row in await cursor.fetchall()}
+            for name in ("rubric_version", "scorecard", "draft_id"):
+                if name not in columns:
+                    await conn.execute(f"ALTER TABLE evaluations ADD COLUMN {name} TEXT")
+            await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS evaluation_draft ON evaluations(draft_id)")
+            await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (2)")
 
     async def close(self):
         if self.connection:
@@ -153,6 +171,81 @@ class Database:
             await self._audit(conn, guild, scout_id, "evaluation.created",
                               {"evaluation_id": identifier, "candidate_id": str(candidate_id)})
             return identifier
+
+    async def start_draft(self, guild, candidate, candidate_name, actor, actor_name, position):
+        payload = {"categories": {}, "count": None, "context": "", "notes": ""}
+        validate_payload(payload, position)
+        async with self.transaction() as conn:
+            async with conn.execute(
+                """SELECT * FROM evaluation_drafts WHERE guild_id=? AND candidate_id=?
+                AND scout_id=? AND position=? AND status='draft' ORDER BY created_at DESC LIMIT 1""",
+                (str(guild), str(candidate), str(actor), position),
+            ) as cursor:
+                previous = await cursor.fetchone()
+            if previous:
+                return dict(previous)
+            identifier, now = uuid.uuid4().hex, utcnow()
+            await conn.execute(
+                """INSERT INTO evaluation_drafts
+                (id,guild_id,candidate_id,candidate_name,scout_id,scout_name,position,
+                rubric_version,payload,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (identifier, str(guild), str(candidate), candidate_name, str(actor),
+                 actor_name, position, VERSION, json.dumps(payload), now, now),
+            )
+            await self._audit(conn, guild, actor, "draft.created", {"draft_id": identifier})
+        return await self.draft(guild, actor, identifier)
+
+    async def draft(self, guild, actor, identifier):
+        row = await self.one(
+            "SELECT * FROM evaluation_drafts WHERE id=? AND guild_id=? AND scout_id=?",
+            (identifier, str(guild), str(actor)),
+        )
+        if row is None:
+            raise ValueError("Draft not found in your private server-scoped evaluations.")
+        return row
+
+    async def change_draft(self, guild, actor, identifier, revision, *, payload=None, action="correct"):
+        if action not in {"correct", "save", "discard"}:
+            raise ValueError("Unknown draft action.")
+        async with self.transaction() as conn:
+            async with conn.execute(
+                "SELECT * FROM evaluation_drafts WHERE id=? AND guild_id=? AND scout_id=?",
+                (identifier, str(guild), str(actor)),
+            ) as cursor:
+                fetched = await cursor.fetchone()
+            if fetched is None:
+                raise ValueError("Draft not found in your private server-scoped evaluations.")
+            row = dict(fetched)
+            if action == "save" and row["status"] == "saved":
+                return row["evaluation_id"]  # idempotent even after restart
+            if row["status"] != "draft" or row["revision"] != revision:
+                raise ValueError("This draft changed or was closed. Reopen /scout evaluate to review the latest version.")
+            data = payload if action == "correct" else json.loads(row["payload"])
+            result = validate_payload(data, row["position"], complete=action == "save",
+                                      version=row["rubric_version"])
+            evaluation_id = None
+            if action == "save":
+                cursor = await conn.execute(
+                    """INSERT INTO evaluations(guild_id,candidate_id,candidate_name,scout_id,
+                    scout_name,position,score,notes,created_at,rubric_version,scorecard,draft_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (row["guild_id"], row["candidate_id"], row["candidate_name"], row["scout_id"],
+                     row["scout_name"], row["position"], float(result.score), data["notes"], utcnow(),
+                     row["rubric_version"], json.dumps(data), identifier),
+                )
+                evaluation_id = cursor.lastrowid
+                await cursor.close()
+            await conn.execute(
+                """UPDATE evaluation_drafts SET payload=?,revision=revision+1,status=?,
+                evaluation_id=?,updated_at=? WHERE id=?""",
+                (json.dumps(data), {"correct": "draft", "save": "saved", "discard": "discarded"}[action],
+                 evaluation_id, utcnow(), identifier),
+            )
+            await self._audit(conn, guild, actor, f"draft.{action}",
+                              {"draft_id": identifier, "revision": revision + 1,
+                               "before": json.loads(row["payload"]), "after": data,
+                               "evaluation_id": evaluation_id})
+            return evaluation_id
 
     async def history(self, guild: int, member: int, page: int = 0):
         return await self.all(

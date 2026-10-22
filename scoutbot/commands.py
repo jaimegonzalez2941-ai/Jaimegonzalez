@@ -78,7 +78,7 @@ class ScoutCommands(app_commands.Group):
             raise ValueError("Select a player, not a bot.")
         await interaction.response.send_message(
             embed=ui.embed("Evaluate candidate", f"Choose a position for **{ui.text(candidate.display_name)}**."),
-            view=PositionView(candidate, interaction.user.id), ephemeral=True,
+            view=PositionView(candidate, interaction.user.id, interaction.guild.id), ephemeral=True,
         )
 
     @app_commands.command(description="Read a player's paginated scouting dossier and notes")
@@ -306,7 +306,10 @@ class ScoutCommands(app_commands.Group):
         )
         result.add_field(
             name="Scoring",
-            value="Ratings: 1.0–10.0; one decimal place. The original no-7 rule rejects "
-                  "6.8–7.2 inclusive. Trial-ready starts at 8.0.", inline=False,
+            value="Five position-aware categories, each 1–10 (one decimal). Unobserved = unassessed. "
+                  "Review and explicitly confirm all five with context and positive observed session count. "
+                  "Computed 6.8–7.2 stays a reassessment draft. Trial-ready starts at 8.0, "
+                  "not automatic recruitment. Resume drafts with the same candidate and position. "
+                  "EA ratings and imported match records remain separate.", inline=False,
         )
         await interaction.response.send_message(embed=result, ephemeral=True)

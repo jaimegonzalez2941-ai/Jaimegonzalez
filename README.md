@@ -26,12 +26,15 @@ The row must begin with the player's EA handle, followed by pipe-separated `Labe
 
 For example, a post containing `Club · Cup / Playoff match · Loss 1–5`, a date, and `Current leaderboards` with the player rows only in its image is not importable. Include the player rows as text in the message or embed to make it eligible.
 
-Match ratings are objective input; the scouting no-7 rule does not alter match data. Match records use Discord's source message timestamp, not an independently verified match time. Linking a player after a recap has already been imported makes earlier matching records visible.
+Match ratings are reported EA input, not human scouting scores; the scouting no-7 rule does not alter match data. Match records use Discord's source message timestamp, not an independently verified match time. Linking a player after a recap has already been imported makes earlier matching records visible.
 
 ## Commands and limits
 
 - All scouting and match-data responses are private (ephemeral); the persistent docket is restricted to its configured private channel.
-- Scouting ratings accept one decimal place in the 1.0–10.0 range. The original rule excludes **6.8–7.2, inclusive**; trial-ready starts at 8.0.
+- `/scout evaluate` opens a private, position-aware five-category scorecard. Read each category's guidance, enter observed evidence, add context and positive declared session count, then review and **Confirm & save**. Repeating the command with the same candidate/position resumes your draft after timeout/restart. Drafts can be corrected or discarded.
+- Category scores accept 1–10 with one decimal place; missing categories remain unassessed. All five are needed for a weighted result. The original overall no-7 policy excludes **6.8–7.2 inclusive** (raw or rounded); borderline results remain drafts requiring reassessment, never snapped or published. Trial-ready begins at a rounded 8.0, not automatic role assignment.
+- Evidence coverage is separate: 1–2 declared sessions = Limited, 3–4 = Developing, 5+ = Broader. These are not verified statistical confidence. **Trusted match context** shows imported records separately, never blended into the rating.
+- See [the versioned rubric and worked examples](docs/scouting-rubric.md) for role observables, 1–10 anchors, weights and exact decimal half-up rounding. Initial weights are design defaults, not validated predictions. Older single-score evaluations remain labeled legacy, without fabricated subscores or recalculation.
 - `/scout unlink` requires a confirmation option and removes only the handle mapping; it **does not** erase statistics. No player-stat deletion command is provided.
 - Recruitment role assignment requires Manage Roles for both the actor and bot; roles are validated as non-privileged and below the bot's hierarchy.
 - Each server's settings, scouting records, role mapping, match data, and audit history are isolated in the database.

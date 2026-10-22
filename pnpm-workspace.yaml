@@ -75,8 +75,9 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
-  # Upstream has not released the braces depth-guard fix yet; pin the reviewed upstream PR.
-  braces: "https://github.com/micromatch/braces.git#d44b9b1ee12e7804d4232d5a47a4a0c61d2fbefe"
+  # No upstream release fixes GHSA-vfj7-8cjw-p6xm; use the depth-guard backport.
+  # Keep exact until an official fixed release is available.
+  braces: "npm:@dieub/braces-depth-guard@3.0.3-pn.3"
   "postcss-selector-parser": "7.1.7"
   "proxy-addr@^2": "^2.0.8"
   "source-map-js@^1": "^1.2.2"

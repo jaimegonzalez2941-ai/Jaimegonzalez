@@ -4,3 +4,4 @@
 - [Interaction errors](interaction-error-policy.md) — actionable private errors across commands and controls; uncertain writes are not failed writes.
 - [Permission audits without member intent](discord-permission-audit.md) — resolve exact referenced members; an empty guild cache does not prove an account is absent.
 - [Onboarding analytics privacy](onboarding-analytics-privacy.md) — custom onboarding measurements must use fixed labels, never private club or account information.
+- [Unreleased dependency fixes](unreleased-dependency-fixes.md) — Git patches can retain vulnerable package identities; verify backport behavior and audit results separately.

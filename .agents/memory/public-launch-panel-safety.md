@@ -13,3 +13,13 @@ does not prove that nothing was posted.
 **How to apply:** Preserve durable publication intent and reconcile uncertain sends before
 retrying. Do not replace inaccessible messages merely because the old location cannot be read.
 Public launch controls are generic entry points, never authority inherited from their publisher.
+
+After slash-command registration changes, the live bot and Discord client can have different
+command trees until the bot completes an online sync. A `CommandNotFound` is not evidence of a
+panel-channel permission problem.
+
+**Why:** `/start_panel` was selectable in Discord, but the running bot had no registered handler.
+Restarting the bot synced the command tree; the user confirmed that the command then worked.
+
+**How to apply:** When a command produces `CommandNotFound` after code has registered it, verify
+the live sync state before debugging command logic, channel permissions or panel publication.

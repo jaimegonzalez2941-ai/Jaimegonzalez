@@ -95,6 +95,114 @@ Match ratings are reported EA input, not human scouting scores; the scouting no-
 - `ENABLE_RECAPS=false` runs evaluation and recruiting without the privileged Message Content intent. Set it to `true` only after enabling the intent in Discord, then restart.
 - `SCOUT_DB_PATH` can select another SQLite file path. `.data/` is private local app data; production hosting must use a continuously running VM with persistent local storage or migrate the repository to a durable database before publishing.
 
+## Coach and owner workspace
+
+The workspace stays in this Discord bot. There is no new web application, public recruitment
+board, AI service, automatic role change or score recalculation.
+
+### Access, privacy and dates
+
+All commands below require the configured scouting staff role or **Manage Server**, including
+every pagination button. Replies are ephemeral, escaped, length-limited and cannot ping anyone.
+Pagination belongs to the requesting staff member and server; after ten minutes, rerun the
+command for a fresh snapshot. IDs are local to this server. Staff records and audit entries
+survive restart in the existing SQLite database; migrations are additive.
+
+Recruitment, goal and task assignees must currently be staff or managers, not bots. The bot
+checks the selected member via a single Discord member lookup, without enabling the privileged
+member-list intent. Historical owners remain visible by ID even if they leave staff; this does
+not grant them access. Creating or updating records, archiving entries and completing work are
+audited atomically with the record change.
+
+Every deadline requires `YYYY-MM-DD`, `HH:MM` (24-hour) and an IANA timezone such as
+`America/Chicago`, `Europe/London` or `UTC`. Output uses Discord-localized timestamps; the input
+timezone is retained. Daylight-saving times that do not exist or occur twice are rejected; use
+UTC to disambiguate. Past deadlines are allowed for recording existing overdue work.
+**Overdue** means strictly before now; **due soon** means from now through the next seven days,
+excluding the exact end boundary. A deadline is a follow-up obligation, never an automatic
+rejection, promotion, penalty or notification.
+
+### Player dossiers and comparisons
+
+- `/scout player member:@Player` opens a unified, paginated staff dossier: all saved evaluations
+  with full category evidence/context/notes, rubric version, saved dates and declared coverage;
+  separately labeled trusted-source metric aggregates with **per-metric sample sizes**, source
+  rows and dates; attendance under the current policy; recruitment follow-ups (including
+  archives) and active/completed development goals. Missing evidence is explicitly unreported.
+  Other scouts' private drafts are not queried or exposed.
+- `/scout compare first:@PlayerA second:@PlayerB position:Defender` uses only the **latest saved**
+  evaluation at that position for each player. Categories are shown numerically only when both
+  records use the supported, compatible rubric version. Legacy/missing/incompatible records
+  are labeled and their full saved observations remain readable without invented subscores or
+  recalculation. There is no overall winner, inferred potential or statistical confidence.
+- Saved timestamps are not observation dates. Observation dates and conditions, if declared,
+  remain staff-entered context; structured observation dates were not collected by the existing
+  rubric. Declared coverage is not verified imported match count. Imported player-row samples
+  need not be unique matches or independent observations, and trusted sources are not independent
+  verification of EA data. Human ratings and imported statistics are never blended.
+- Existing `/scout history`, `/scout stats`, evaluation, docket and role commands still work.
+
+### Recruitment follow-ups
+
+```text
+/scout shortlist add candidate:@Player position:Defender responsible:@Coach next_action:Observe recovery runs review_date:2026-11-03 time:20:00 timezone:America/Chicago
+/scout shortlist list status:active
+/scout shortlist list status:overdue
+/scout shortlist remove entry_id:1 confirm:True
+/scout shortlist list status:archived
+```
+
+Adding the same active candidate/position updates its owner, next action and review deadline
+instead of duplicating it. Other positions have separate entries. Removal requires explicit
+confirmation and **archives**, never deletes; adding an archived candidate/position later
+creates a new active follow-up while preserving the old history. Filters: active, overdue,
+archived, all. No recruitment roles or scoring rules change.
+
+### Development goals
+
+```text
+/development goal member:@Player description:Improve pressured passing criteria:Observe five accurate forward passes during a training session target_date:2026-11-05 time:20:00 timezone:America/Chicago responsible:@Coach
+/development review member:@Player status:active
+/development complete goal_id:2 outcome:Observed four of five accurate passes; review again next week
+/development review member:@Player status:completed
+```
+
+Goals require observable success criteria and a target deadline. `responsible` defaults to the
+creating staff member. Review can filter by player and active/overdue/completed/all. Completion
+requires an outcome note and preserves who completed it and when. Repeated completion preserves
+the original note and creates no duplicate completion. This is a staff observation, not automatic
+proof of improvement or a change to scouting scores.
+
+### Staff actions and briefing
+
+```text
+/assistant task add owner:@Coach description:Review the defender evidence due_date:2026-11-02 time:19:00 timezone:America/Chicago
+/assistant task list status:overdue
+/assistant task complete task_id:3 outcome:Reviewed both evaluations and recorded the next action
+/assistant task list status:completed
+/assistant brief
+```
+
+Tasks have an accountable eligible staff owner, deadline and required completion note; filters
+are active/overdue/completed/all. Completed items remain reviewable; repeated completion cannot
+overwrite the original outcome or create duplicate completion records.
+
+The private **on-demand** briefing shows:
+
+- Non-cancelled sessions starting in the next seven days with recorded yes, assigned, maybe,
+  no and pending counts. Assigned is reported separately from yes. Pending counts only explicit
+  pending roster records, not all server members; availability is not a commitment.
+- All pending leave decisions, including dates beyond the seven-day horizon; no private reasons.
+- Incomplete attendance only for yes/assigned players in eligible, completed, non-cancelled
+  sessions starting within the current attendance-policy window. Approved overlapping leave
+  and excused marks are protected; unmarked is never inferred absent.
+- Overdue and due-soon active tasks, recruitment reviews and goals, with IDs, owners and deadlines.
+- A separately labeled **suggested next actions** section. It does not infer disengagement,
+  missed attendance, personality or potential.
+
+The briefing neither sends DMs nor schedules briefings/reminders, and it does not modify the
+separate session-notification workflow or any attendance/promotion policy.
+
 ## Development checks
 
 ```sh

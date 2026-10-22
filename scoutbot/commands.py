@@ -12,6 +12,8 @@ from .domain import STAGES
 from .ingestion import import_message
 from . import presentation as ui
 from .views import DocketView, HistoryView, PositionView
+from .assistant_commands import ShortlistCommands, POSITION_CHOICES, player
+from .assistant_ui import comparison_blocks, dossier_blocks, send_pages
 
 STAGE_CHOICES = [app_commands.Choice(name=s, value=s) for s in STAGES]
 
@@ -21,10 +23,32 @@ class ScoutCommands(app_commands.Group):
     def __init__(self, bot):
         super().__init__(name="scout", description="Private scouting, recruitment, and match performance")
         self.bot = bot
+        self.add_command(ShortlistCommands(bot))
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         await staff_access(interaction)
         return True
+
+    @app_commands.command(description="Read a unified private player dossier with full saved evidence and follow-ups")
+    async def player(self, interaction: discord.Interaction, member: discord.Member):
+        await staff_access(interaction)
+        player(member)
+        await interaction.response.defer(ephemeral=True)
+        await send_pages(interaction, "Player dossier",
+                         await dossier_blocks(self.bot.db, interaction.guild_id, member))
+
+    @app_commands.command(description="Compare latest saved position evaluations; compatible rubric evidence only")
+    @app_commands.choices(position=POSITION_CHOICES)
+    async def compare(self, interaction: discord.Interaction, first: discord.Member,
+                      second: discord.Member, position: str):
+        await staff_access(interaction)
+        player(first)
+        player(second)
+        if first.id == second.id:
+            raise ValueError("Choose two different players.")
+        await interaction.response.defer(ephemeral=True)
+        await send_pages(interaction, "Position evidence comparison",
+                         await comparison_blocks(self.bot.db, interaction.guild_id, first, second, position))
 
     @app_commands.command(description="Configure this server's staff access and trusted recap source")
     @app_commands.default_permissions(manage_guild=True)
@@ -315,6 +339,19 @@ class ScoutCommands(app_commands.Group):
             value="`/scout setup` · Staff and source configuration (Manage Server)\n"
                   "`/scout stage_role` · Map recruitment roles (Manage Server)\n"
                   "`/scout status` · Health and recent recap outcomes", inline=False,
+        )
+        result.add_field(
+            name="Coach and owner workspace",
+            value="`/scout player member` · Full saved evidence, attendance, follow-ups and goals\n"
+                  "`/scout compare first second position` · Compatible rubric categories, no winner\n"
+                  "`/scout shortlist add`, `list`, `remove` · Staff-owned recruitment follow-ups\n"
+                  "`/development goal`, `review`, `complete` · Observable goals and outcome notes\n"
+                  "`/assistant task add`, `list`, `complete` · Accountable staff actions\n"
+                  "`/assistant brief` · Private on-demand next-seven-days facts and suggested actions\n"
+                  "All staff-only, paginated and server-isolated; no private drafts. Explicit timezone deadlines "
+                  "are shown in your Discord locale. Review dates are not player decisions; completion never "
+                  "changes scores or roles. Imported metric samples remain separate from declared coverage.",
+            inline=False,
         )
         result.add_field(
             name="Supported recap row",

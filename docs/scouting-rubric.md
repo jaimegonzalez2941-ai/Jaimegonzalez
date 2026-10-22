@@ -154,3 +154,23 @@ change must introduce a new rubric version and retain the old version's renderer
 and calculator. Never modify this version in place or recalculate saved records.
 Persisted category values, assessor, position, context, notes and version explain
 each saved rating independently of future calibration.
+
+## Connected staff evidence views
+
+`/scout player member` paginates the full saved category observations, context and
+notes rather than the abbreviated history summaries. It includes saved dates and
+rubric versions; saved timestamps are not observation dates. Structured observation
+dates were not collected; any dates in context remain staff declarations.
+Other scouts' private drafts are excluded.
+
+`/scout compare first second position` selects the latest saved evaluation at the
+chosen position for each player. Numeric category comparisons require the same
+supported rubric version on both records. Missing, legacy or incompatible records
+are labeled, with no invented subscores, retrospective recalculation, overall winner
+or statistical confidence. Full saved evidence stays readable.
+
+Imported EA metrics remain a separately labeled source with individual reported-row
+sample sizes. Declared coverage is not an imported match count; imported rows need
+not represent unique matches or independent observations. Neither source proves
+potential, personality or improvement. Recruitment reviews, development completion
+and staff tasks are tracking records only and never alter this rubric or its scores.

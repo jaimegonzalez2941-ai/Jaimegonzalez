@@ -18,7 +18,7 @@ class DiscordContractTests(unittest.IsolatedAsyncioTestCase):
         bot.tree.add_command(group)
         payload = group.to_dict(bot.tree)
         self.assertEqual(payload["name"], "scout")
-        self.assertEqual(len(group.commands), 12)
+        self.assertEqual(len(group.commands), 15)
         self.assertTrue(DocketView().is_persistent())
         self.assertTrue(issubclass(AccessDenied, discord.app_commands.CheckFailure))
         self.assertFalse(bot.intents.members)

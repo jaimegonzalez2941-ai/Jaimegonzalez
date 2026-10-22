@@ -48,6 +48,10 @@ An always-on Discord bot for private FC Pro Clubs scouting, recruitment, availab
 
 - Private scorecards, scouting history, staff docket, recruitment roles, EA handle linking, match statistics, weekly availability, approved leave, schedules, RSVPs, attendance, and promotion evidence.
 - `/club` is the member-facing command guide. `/scout` is retained for backward-compatible staff commands.
+- The coach/owner workspace stays inside this bot: `/scout player`, `/scout compare`, `/scout shortlist`, `/development`, `/assistant task` and `/assistant brief`.
+- Staff workspace mutations and audits share a serialized transaction; IDs are server-local. Recruitment deadlines are follow-ups, not player decisions; completion never changes scores or roles.
+- Workspace views contain saved evidence only, paginate full observations, and recheck staff access, requesting user and server on each continuation. Assignees use a current single-member REST check, never privileged member enumeration.
+- Briefings are on-demand only, preserve current attendance protections, and do not depend on session notification delivery.
 - See README for attendance policy, vacation protections, timezone behavior, role-override rules, and command examples.
 
 ## User preferences

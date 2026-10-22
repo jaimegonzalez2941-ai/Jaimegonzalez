@@ -13,6 +13,7 @@ from .domain import handle
 from .parser import PlayerStats
 from .rubric import VERSION, validate_payload
 from .club_store import ClubStore, CLUB_SCHEMA
+from .assistant_store import AssistantStore, ASSISTANT_SCHEMA
 
 
 def utcnow() -> str:
@@ -77,7 +78,7 @@ CREATE TABLE IF NOT EXISTS evaluation_drafts (
 """
 
 
-class Database(ClubStore):
+class Database(ClubStore, AssistantStore):
     def __init__(self, path: Path):
         self.path = path
         self.lock = asyncio.Lock()
@@ -92,6 +93,7 @@ class Database(ClubStore):
         await self.connection.execute("PRAGMA busy_timeout=5000")
         await self.connection.executescript(SCHEMA)
         await self.connection.executescript(CLUB_SCHEMA)
+        await self.connection.executescript(ASSISTANT_SCHEMA)
         # Additive upgrades: never rewrite or recalculate existing club records.
         async with self.transaction() as conn:
             async with conn.execute("PRAGMA table_info(evaluations)") as cursor:
@@ -111,6 +113,7 @@ class Database(ClubStore):
             await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS evaluation_draft ON evaluations(draft_id)")
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (2)")
             await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (3)")
+            await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (4)")
 
     async def close(self):
         if self.connection:

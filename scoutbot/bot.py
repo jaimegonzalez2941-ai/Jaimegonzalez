@@ -10,6 +10,7 @@ from .commands import ScoutCommands
 from .availability_commands import AvailabilityCommands
 from .schedule_commands import ScheduleCommands
 from .attendance_commands import AttendanceCommands, PromotionCommands
+from .assistant_commands import AssistantCommands, DevelopmentCommands
 from .club_ui import club_help
 from .branding import apply_branding
 from .config import Settings
@@ -50,7 +51,8 @@ class ScoutBot(commands.Bot):
 
     def register_commands(self):
         for command in (ScoutCommands(self), AvailabilityCommands(self), ScheduleCommands(self),
-                        AttendanceCommands(self), PromotionCommands(self), club_help):
+                        AttendanceCommands(self), PromotionCommands(self), AssistantCommands(self),
+                        DevelopmentCommands(self), club_help):
             self.tree.add_command(command)
 
     async def setup_hook(self):

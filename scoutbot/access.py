@@ -28,6 +28,21 @@ def manager_access(interaction: discord.Interaction):
         raise AccessDenied("You need Manage Server permission to change bot settings.")
 
 
+async def staff_assignee(interaction, member):
+    """Fetch one selected member over REST; never enumerate the member list."""
+    config = await staff_access(interaction)
+    if member.guild.id != interaction.guild.id:
+        raise AccessDenied("Choose a staff member in this server.")
+    current = await interaction.guild.fetch_member(member.id)
+    if current.bot or not is_staff(
+        manage_guild=current.guild_permissions.manage_guild,
+        role_ids={role.id for role in current.roles},
+        staff_role=config["staff_role"] if config else None,
+    ):
+        raise AccessDenied("The responsible member must currently be configured staff or a server manager.")
+    return current
+
+
 def private_channel(channel: discord.TextChannel, staff_role: discord.Role):
     """Fail closed when explicit overwrites allow a non-staff audience."""
     if channel.overwrites_for(channel.guild.default_role).view_channel is not False:

@@ -5,11 +5,12 @@ import { Menu, X, ArrowUpRight, ExternalLink } from 'lucide-react';
 import { useGetClubPublic } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { trackEvent, type InstallLocation } from '@/lib/analytics';
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 export const emblem = `${base}/club-agent.jpg`;
 
-export function InstallCta({ className, tone = 'dark' }: { className?: string; tone?: 'dark' | 'light' }) {
+export function InstallCta({ location, className, tone = 'dark' }: { location: InstallLocation; className?: string; tone?: 'dark' | 'light' }) {
   const { data, isLoading, isError, refetch } = useGetClubPublic();
   if (isLoading) return <Skeleton className="h-11 w-56" />;
   if (isError) {
@@ -24,7 +25,8 @@ export function InstallCta({ className, tone = 'dark' }: { className?: string; t
     return (
       <div className={className}>
         <Button asChild size="lg" className={tone === 'dark' ? 'bg-accent text-accent-foreground border-accent' : ''}>
-          <a href={data.installUrl} target="_blank" rel="noopener noreferrer" data-testid="link-install">
+          <a href={data.installUrl} target="_blank" rel="noopener noreferrer" data-testid="link-install"
+            onClick={() => trackEvent({ name: 'install_link_clicked', location })}>
             Add Club Agent to Discord <ExternalLink />
           </a>
         </Button>

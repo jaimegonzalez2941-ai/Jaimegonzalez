@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'wouter';
 import { PublicLayout, InstallCta } from '@/components/public-layout';
 import { Button } from '@/components/ui/button';
+import { trackEvent } from '@/lib/analytics';
 
 const steps: { t: string; body: string[]; code?: string[] }[] = [
   { t: 'Add the bot to your server', body: ['A server owner or manager adds Club Agent using the install link below. If no link is shown, this deployment has not published one.'] },
@@ -13,6 +15,13 @@ const steps: { t: string; body: string[]; code?: string[] }[] = [
 ];
 
 export default function Guide() {
+  const entered = useRef(false);
+  useEffect(() => {
+    if (entered.current) return;
+    entered.current = true;
+    trackEvent({ name: 'start_here_entered', location: 'start_here_guide' });
+  }, []);
+
   return (
     <PublicLayout>
       <section className="bg-ink text-[hsl(40_30%_92%)]">
@@ -36,7 +45,7 @@ export default function Guide() {
                     {s.code.map((c) => <code key={c} className="rounded-md bg-ink px-2.5 py-1 font-mono text-sm text-accent">{c}</code>)}
                   </div>
                 )}
-                {i === 0 && <InstallCta className="mt-4" tone="light" />}
+                {i === 0 && <InstallCta location="start_here_guide" className="mt-4" tone="light" />}
               </div>
             </li>
           ))}

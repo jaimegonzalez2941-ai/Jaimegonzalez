@@ -3,6 +3,8 @@ import { ClerkProvider, useAuth } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { getGetClubAccessQueryKey, getGetPlayerAccessQueryKey } from '@workspace/api-client-react';
+import { createConnectionObserver } from '@/lib/analytics';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -81,6 +83,21 @@ function SessionQueries({ children }: { children: ReactNode }) {
   const client = useMemo(() => new QueryClient({
     defaultOptions: { queries: { refetchOnWindowFocus: false } },
   }), [userId]);
+  useEffect(() => {
+    if (!userId) return;
+    const observeConnection = createConnectionObserver();
+    const staffKey = JSON.stringify(getGetClubAccessQueryKey());
+    const playerKey = JSON.stringify(getGetPlayerAccessQueryKey());
+    return client.getQueryCache().subscribe((event) => {
+      if (event.type !== 'updated' || event.action.type !== 'success' || event.action.manual) return;
+      const key = JSON.stringify(event.query.queryKey);
+      if (key !== staffKey && key !== playerKey) return;
+      const data: unknown = event.query.state.data;
+      if (data && typeof data === 'object' && 'linked' in data && typeof data.linked === 'boolean') {
+        observeConnection(data.linked, key === staffKey ? 'staff_workspace' : 'player_development');
+      }
+    });
+  }, [client, userId]);
   useEffect(() => {
     return () => { void client.cancelQueries(); client.clear(); };
   }, [client]);

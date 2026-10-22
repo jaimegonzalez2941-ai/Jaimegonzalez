@@ -46,7 +46,7 @@ export default function Landing() {
               Explainable evidence, accountable club operations and attendance that understands vacations. No invented potential ratings, no black-box verdicts on your players.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-8 flex flex-wrap items-start gap-4">
-              <InstallCta />
+              <InstallCta location="landing_hero" />
               <Button asChild variant="outline" size="lg" className="border-[hsl(40_30%_90%/0.35)] bg-transparent text-inherit">
                 <Link href="/guide" data-testid="link-hero-guide">Start here <ArrowRight /></Link>
               </Button>
@@ -166,7 +166,7 @@ export default function Landing() {
             <Users className="mb-3 h-6 w-6 text-accent" />
             <h2 className="font-display text-3xl font-bold md:text-4xl">Bring the bot. Link your account. Start with the guide.</h2>
           </div>
-          <div className="flex flex-col gap-3"><InstallCta /><Link href="/guide" className="text-sm underline underline-offset-4 hover:text-accent">Read the start-here guide</Link></div>
+          <div className="flex flex-col gap-3"><InstallCta location="landing_footer" /><Link href="/guide" className="text-sm underline underline-offset-4 hover:text-accent">Read the start-here guide</Link></div>
         </Reveal>
       </section>
     </PublicLayout>

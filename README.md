@@ -190,7 +190,61 @@ Match ratings are reported EA input, not human scouting scores; the scouting no-
 - Recruitment role assignment requires Manage Roles for both the actor and bot; roles are validated as non-privileged and below the bot's hierarchy.
 - Each server's settings, scouting records, role mapping, match data, and audit history are isolated in the database.
 - `ENABLE_RECAPS=false` runs evaluation and recruiting without the privileged Message Content intent. Set it to `true` only after enabling the intent in Discord, then restart.
-- `SCOUT_DB_PATH` can select another SQLite file path. `.data/` is private local app data; production hosting must use a continuously running VM with persistent local storage or migrate the repository to a durable database before publishing.
+- `SCOUT_DB_PATH` can select another SQLite file path. The supported SQLite production topology is one continuously running Linux host with a durable local filesystem, where the bot, Unix-socket bridge and API run under the same OS account. Published Replit app filesystems are ephemeral, including VM deployments; the current published website/API artifacts also do not share a host with the bot workflow. Therefore this repository does not currently have a supported production topology for authoritative SQLite records. Do not treat `.data/` on a published deployment as durable.
+
+### Private SQLite backups and recovery
+
+Backups are local operator files, not website or Discord features. Run these commands from a trusted shell with the same `SCOUT_DB_PATH` and working directory as the bot:
+
+```sh
+# While the bot is running: create a consistent snapshot, including committed WAL pages.
+uv run python -m scoutbot --backup
+
+# Before recovery: validate the backup and exercise schema upgrades on a disposable copy.
+uv run python -m scoutbot --rehearse-restore .data/backups/club-agent-...sqlite3
+```
+
+The default output directory is `.data/backups/`; set `SCOUT_BACKUP_DIR` to use another
+private directory. The tool creates it with mode `0700`,
+creates backup files with mode `0600`, validates SQLite integrity, foreign keys and schema
+compatibility, and does not print record contents. The files are ignored by Git and are not
+served by any HTTP route. Restrict host and shell access to trusted operators; do not put
+backups in a public directory, commit them, attach them to support requests, or log their
+contents. For a custom database path, backups still default to `.data/backups`; set
+`SCOUT_BACKUP_DIR` when the backup location should differ.
+
+Backups are not scheduled or copied off-host automatically. Operators should create a backup
+at least daily, retain at least 30 days of daily copies, and keep an encrypted, access-limited
+off-host copy; verify the off-host copy by running the rehearsal command after transfer.
+Retention and off-host copying are operator responsibilities. A local backup on the same
+ephemeral host does not protect against host loss or redeployment.
+
+For recovery, stop the bot and API service first, copy a known off-host backup to a private
+local path, and run `--rehearse-restore` against that exact file. Rehearsal changes only a
+temporary copy. Then explicitly run:
+
+```sh
+uv run python -m scoutbot --restore /private/path/verified-backup.sqlite3 --confirm-live-restore
+```
+
+Restore requires an existing live database, repeats integrity/schema validation on an isolated
+copy immediately before replacement, refuses an unsupported/corrupt backup, and will not
+proceed while a current Club Agent process holds the database lock. It saves a consistent
+`pre-restore-*.sqlite3` copy in the configured backup directory (default `.data/backups/`)
+before replacing the live database. Check that copy exists and preserve it off-host before any
+later cleanup. Restart the bot and API only
+after restore completes, then inspect records and service health. Recovery does not connect
+to Discord or send messages, change roles, or replay commands. The restore command cannot
+recover backups lost with the same host, and schema rehearsal does not prove record correctness.
+
+**Production support limitation:** Replit published local files reset during redeployment;
+VM compute alone does not make `.data/` durable. The current web/API artifacts are separate
+services and the bot bridge is a same-host Unix socket. A production deployment must move all
+three services to a single compatible, continuously running host with durable local storage,
+or complete a separately planned durable-database migration. No production host, persistent
+volume, backup destination, schedule, or retention enforcement is configured or verifiable
+from this repository. The root deployment target is set to VM for the long-running process
+requirement but does not resolve the filesystem or multi-artifact limitations.
 
 ## Coach and owner workspace
 

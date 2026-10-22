@@ -3,8 +3,11 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+import fcntl
 import json
+import os
 import time
+import threading
 import uuid
 from pathlib import Path
 
@@ -18,6 +21,68 @@ from .assistant_store import AssistantStore, ASSISTANT_SCHEMA
 
 
 GUIDE_RETENTION_SECONDS = 30 * 24 * 60 * 60
+CURRENT_SCHEMA_VERSION = 4
+
+_DATABASE_LOCKS = {}
+_DATABASE_LOCKS_GUARD = threading.Lock()
+
+
+class DatabaseProcessLock:
+    """Process-wide single-writer lock shared by the bot and restore tooling."""
+
+    def __init__(self, database_path: Path, *, exclusive: bool = False):
+        self.path = Path(f"{database_path}.lock")
+        self.exclusive = exclusive
+        self.key = None
+
+    def acquire(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.key = str(self.path.resolve())
+        with _DATABASE_LOCKS_GUARD:
+            active = _DATABASE_LOCKS.get(self.key)
+            if active:
+                if self.exclusive or active["exclusive"]:
+                    self.key = None
+                    raise RuntimeError(
+                        "The database is open or reserved in this process; stop or wait before restoring."
+                    )
+                active["users"] += 1
+                return
+
+            fd = os.open(self.path, os.O_CREAT | os.O_RDWR, 0o600)
+            os.fchmod(fd, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(fd)
+                self.key = None
+                raise RuntimeError(
+                    "The database is in use by another Club Agent process; stop it before restoring."
+                ) from None
+            _DATABASE_LOCKS[self.key] = {
+                "fd": fd,
+                "users": 1,
+                "exclusive": self.exclusive,
+            }
+
+    def release(self):
+        if self.key is not None:
+            with _DATABASE_LOCKS_GUARD:
+                active = _DATABASE_LOCKS.get(self.key)
+                if active:
+                    active["users"] -= 1
+                    if active["users"] == 0:
+                        fcntl.flock(active["fd"], fcntl.LOCK_UN)
+                        os.close(active["fd"])
+                        del _DATABASE_LOCKS[self.key]
+                self.key = None
+
+    def __enter__(self):
+        self.acquire()
+        return self
+
+    def __exit__(self, *_):
+        self.release()
 
 
 def utcnow() -> str:
@@ -100,6 +165,7 @@ class Database(ClubStore, AssistantStore):
         self.path = path
         self.lock = asyncio.Lock()
         self.connection: aiosqlite.Connection | None = None
+        self._process_lock: DatabaseProcessLock | None = None
         self.workspace_views = set()
         # Keep Discord publication serialized separately from SQL transactions.
         self.start_panel_lock = asyncio.Lock()
@@ -110,42 +176,58 @@ class Database(ClubStore, AssistantStore):
 
     async def open(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.connection = await aiosqlite.connect(self.path, isolation_level=None)
-        self.connection.row_factory = aiosqlite.Row
-        await self.connection.execute("PRAGMA foreign_keys=ON")
-        await self.connection.execute("PRAGMA journal_mode=WAL")
-        await self.connection.execute("PRAGMA busy_timeout=5000")
-        await self.connection.executescript(SCHEMA)
-        await self.connection.executescript(CLUB_SCHEMA)
-        await self.connection.executescript(ASSISTANT_SCHEMA)
-        # Additive upgrades: never rewrite or recalculate existing club records.
-        async with self.transaction() as conn:
-            async with conn.execute("PRAGMA table_info(evaluations)") as cursor:
-                columns = {row["name"] for row in await cursor.fetchall()}
-            for name in ("rubric_version", "scorecard", "draft_id"):
-                if name not in columns:
-                    await conn.execute(f"ALTER TABLE evaluations ADD COLUMN {name} TEXT")
-            async with conn.execute("PRAGMA table_info(club_events)") as cursor:
-                event_columns = {row["name"] for row in await cursor.fetchall()}
-            for name, definition in (
-                ("revision", "INTEGER NOT NULL DEFAULT 0"),
-                ("revision_changed_at", "TEXT"),
-                ("revision_time_changed", "INTEGER NOT NULL DEFAULT 0"),
-            ):
-                if name not in event_columns:
-                    await conn.execute(f"ALTER TABLE club_events ADD COLUMN {name} {definition}")
-            await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS evaluation_draft ON evaluations(draft_id)")
-            await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (2)")
-            await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (3)")
-            await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (4)")
-        await self.cleanup_guide_checkpoints()
+        if str(self.path) != ":memory:":
+            process_lock = DatabaseProcessLock(self.path)
+            process_lock.acquire()
+            self._process_lock = process_lock
+        try:
+            self.connection = await aiosqlite.connect(self.path, isolation_level=None)
+            self.connection.row_factory = aiosqlite.Row
+            await self.connection.execute("PRAGMA foreign_keys=ON")
+            await self.connection.execute("PRAGMA journal_mode=WAL")
+            await self.connection.execute("PRAGMA busy_timeout=5000")
+            await self.connection.executescript(SCHEMA)
+            await self.connection.executescript(CLUB_SCHEMA)
+            await self.connection.executescript(ASSISTANT_SCHEMA)
+            # Additive upgrades: never rewrite or recalculate existing club records.
+            async with self.transaction() as conn:
+                async with conn.execute("PRAGMA table_info(evaluations)") as cursor:
+                    columns = {row["name"] for row in await cursor.fetchall()}
+                for name in ("rubric_version", "scorecard", "draft_id"):
+                    if name not in columns:
+                        await conn.execute(f"ALTER TABLE evaluations ADD COLUMN {name} TEXT")
+                async with conn.execute("PRAGMA table_info(club_events)") as cursor:
+                    event_columns = {row["name"] for row in await cursor.fetchall()}
+                for name, definition in (
+                    ("revision", "INTEGER NOT NULL DEFAULT 0"),
+                    ("revision_changed_at", "TEXT"),
+                    ("revision_time_changed", "INTEGER NOT NULL DEFAULT 0"),
+                ):
+                    if name not in event_columns:
+                        await conn.execute(f"ALTER TABLE club_events ADD COLUMN {name} {definition}")
+                await conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS evaluation_draft ON evaluations(draft_id)")
+                for version in range(2, CURRENT_SCHEMA_VERSION + 1):
+                    await conn.execute("INSERT OR IGNORE INTO schema_version VALUES (?)", (version,))
+            await self.cleanup_guide_checkpoints()
+        except BaseException:
+            if self.connection:
+                await self.connection.close()
+                self.connection = None
+            self._process_lock.release()
+            self._process_lock = None
+            raise
 
     async def close(self):
         for view in tuple(self.workspace_views):
             await view.on_timeout()
-        if self.connection:
-            await self.connection.close()
-            self.connection = None
+        try:
+            if self.connection:
+                await self.connection.close()
+                self.connection = None
+        finally:
+            if self._process_lock:
+                self._process_lock.release()
+                self._process_lock = None
 
     @asynccontextmanager
     async def guide_navigation(self, guild, viewer):

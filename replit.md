@@ -6,6 +6,9 @@ An always-on Discord bot and companion website for private FC Pro Clubs scouting
 
 - `uv run python -m scoutbot` — start the bot using the configured `Scout Discord Bot` workflow
 - `uv run python -m scoutbot --check` — validate database setup and slash commands without signing in
+- `uv run python -m scoutbot --backup` — create a private SQLite backup, including WAL data
+- `uv run python -m scoutbot --rehearse-restore BACKUP` — verify a backup on an isolated copy
+- `uv run python -m scoutbot --restore BACKUP --confirm-live-restore` — explicitly restore after stopping the bot/API
 - `uv run python -m unittest discover -s tests -v` — run bot unit and persistence tests
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm --filter @workspace/club-agent run dev` — companion site; use its managed workflow for preview environment/routing
@@ -16,6 +19,8 @@ An always-on Discord bot and companion website for private FC Pro Clubs scouting
 - Required bot secret: `DISCORD_TOKEN` — Replit Secret; never print or commit its value
 - Automatic recaps require **Message Content Intent** enabled in the Discord Developer Portal
 - Bot database defaults to `.data/scout-v2.db` (ignored by Git); set `SCOUT_DB_PATH` to change it
+- Operator backups default to `.data/backups/` (private mode 0700 directory / 0600 files); backups are not exposed through the API and are not automatically scheduled or copied off-host
+- Set `SCOUT_BACKUP_DIR` to choose a different private operator backup directory
 - See `README.md` for installation, permissions, setup, and the supported recap format
 
 ## Stack
@@ -60,6 +65,7 @@ An always-on Discord bot and companion website for private FC Pro Clubs scouting
 - Website signup grants no admin role. Clerk identity is linked by a five-minute, single-use `/website code:...` challenge redeemed by the Discord account itself. Never use a supplied Discord ID or workspace connector as actor authority.
 - Every website read/write rechecks current Discord roles, owner and individual membership through REST. Failed/unavailable verification denies access. Private API responses are `no-store`; browser writes require same-origin JSON.
 - Express communicates with the running bot through `.data/club-web/bridge.sock` in a mode-0700 directory with a mode-0600 socket. There is no TCP bridge, raw SQL API or second SQLite connection in Node. Run both services as the same OS account on the same host.
+- SQLite recovery requires stopping the bot/API, rehearsing the selected backup first, and explicitly confirming live restore. Restore preserves a pre-restore backup; see the README for operator steps, retention assumptions and limits.
 - `CLUB_WEB_SOCKET` is an optional local socket-path override. Never point the normal API workflow at a test fixture. Browser fixtures in `tests/web_browser_fixture.py` run explicitly with temporary databases; no test bypass exists in application code.
 - See README for attendance policy, vacation protections, timezone behavior, role-override rules, and command examples.
 
@@ -71,7 +77,7 @@ _No additional preferences recorded._
 
 - Enable Message Content Intent before running V2 with automatic recaps enabled.
 - Confirm the recap source matches `README.md`; unsupported formats are rejected, not guessed.
-- A published bot needs a continuously running VM and durable file storage.
+- The bot needs a continuously running single host and a durable filesystem. Replit published filesystems are ephemeral, including VM deployments; the current separate web/API artifacts cannot share the bot's local Unix socket. This repo has no verified supported production topology until hosting is consolidated on a durable host or a separate database migration is completed.
 - Website live operations require the bot workflow too; a static frontend alone cannot administer the club. Do not claim saved settings prove current privacy, source authenticity, intent configuration or successful delivery.
 
 ## Pointers

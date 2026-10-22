@@ -11,6 +11,7 @@ class Settings:
     test_guild: int | None
     recaps_enabled: bool
     log_level: str
+    backup_directory: Path = Path(".data/backups")
 
     @classmethod
     def load(cls) -> "Settings":
@@ -22,4 +23,5 @@ class Settings:
             test_guild=int(guild) if guild else None,
             recaps_enabled=os.getenv("ENABLE_RECAPS", "true").lower() == "true",
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            backup_directory=Path(os.getenv("SCOUT_BACKUP_DIR", ".data/backups")),
         )

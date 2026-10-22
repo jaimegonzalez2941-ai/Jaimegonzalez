@@ -4,3 +4,10 @@
 # No need to store the pnpm store twice.
 .local
 /generated-artifacts/
+.data/
+*.db
+*.db-wal
+*.db-shm
+*.db.lock
+*.sqlite3
+*.sqlite3.lock

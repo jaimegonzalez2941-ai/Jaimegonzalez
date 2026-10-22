@@ -5,6 +5,39 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface PlayerServer {
+  id: string;
+  name: string;
+}
+
+export interface PlayerAccess {
+  linked: boolean;
+  discordName?: string;
+  servers: PlayerServer[];
+}
+
+export type PlayerGoalStatus = typeof PlayerGoalStatus[keyof typeof PlayerGoalStatus];
+
+
+export const PlayerGoalStatus = {
+  active: 'active',
+  completed: 'completed',
+} as const;
+
+export interface PlayerGoal {
+  id: number;
+  text: string;
+  status: PlayerGoalStatus;
+  dueAt: string;
+  timezone: string;
+}
+
+export interface PlayerDevelopment {
+  goals: PlayerGoal[];
+  page: number;
+  hasNext: boolean;
+}
+
 export interface ClubPublic {
   connected: boolean;
   /** @nullable */
@@ -91,6 +124,18 @@ export interface ActionResult {
 export interface HealthStatus {
   status: string;
 }
+
+export type GetPlayerDevelopmentParams = {
+/**
+ * @pattern ^[0-9]{15,22}$
+ */
+guild: string;
+/**
+ * @minimum 1
+ * @maximum 10000
+ */
+page?: number;
+};
 
 export type GetClubWorkspaceParams = {
 guild: string;

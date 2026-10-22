@@ -6,6 +6,70 @@ from .access import private_channel, manager_access
 from .club_domain import stamp, utc_now
 from .web_catalog import operations
 from .web_drafts import draft_operations
+from .assistant_store import bounded
+
+
+async def player_development(bot, interaction, params):
+    """Own-account projection only; never return private staff record dictionaries."""
+    if not isinstance(params, dict) or set(params) - {"guild", "page"}:
+        raise ValueError("Only server and page are accepted for your development view.")
+    page = params.get("page", 1)
+    if type(page) is not int or not 1 <= page <= 10000:
+        raise ValueError("Page must be between 1 and 10000.")
+    rows = await bot.db.all(
+        """SELECT s.id,p.player_text AS text,s.status,s.due_at AS dueAt,s.timezone
+        FROM staff_records s JOIN web_player_goals p
+        ON p.guild_id=s.guild_id AND p.goal_id=s.id
+        WHERE s.guild_id=? AND s.member_id=? AND s.kind='goal'
+        AND s.status IN ('active','completed')
+        ORDER BY s.id DESC LIMIT 21 OFFSET ?""",
+        (str(interaction.guild_id), str(interaction.user.id), (page - 1) * 20))
+    return {"goals": rows[:20], "page": page, "hasNext": len(rows) > 20}
+
+
+def player_goal_operations():
+    identifier = {"name": "id", "label": "Development goal ID", "type": "integer",
+                  "required": True, "minimum": 1}
+    return [
+        {"id": "goal.share", "label": "Share a goal with its player",
+         "description": "Write a separate player-facing goal and success criteria. Never include staff notes or scouting evidence. Replaces any previously shared text.",
+         "fields": [identifier, {"name": "text", "label": "Player-facing goal and success criteria",
+                                 "type": "string", "required": True}],
+         "confirmation": True},
+        {"id": "goal.unshare", "label": "Stop sharing a goal",
+         "description": "Removes the goal from the player's website without deleting the private staff record.",
+         "fields": [identifier], "confirmation": True}]
+
+
+async def share_player_goal(bot, interaction, operation, values, confirmed):
+    if not confirmed:
+        raise ValueError("Review and explicitly confirm the player-facing change.")
+    allowed = {"id", "text"} if operation == "goal.share" else {"id"}
+    if not isinstance(values, dict) or set(values) - allowed:
+        raise ValueError("Unsupported sharing fields.")
+    identifier = values.get("id")
+    if type(identifier) is not int or identifier < 1:
+        raise ValueError("Enter a valid development goal ID.")
+    text = bounded(values.get("text"), "Player-facing goal") if operation == "goal.share" else None
+    guild = str(interaction.guild_id)
+    async with bot.db.transaction() as conn:
+        async with conn.execute(
+                "SELECT member_id FROM staff_records WHERE guild_id=? AND id=? AND kind='goal'",
+                (guild, identifier)) as cursor:
+            goal = await cursor.fetchone()
+        if not goal:
+            raise ValueError("That development goal is unavailable in this server.")
+        if text is not None:
+            await conn.execute(
+                """INSERT INTO web_player_goals VALUES (?,?,?)
+                ON CONFLICT(guild_id,goal_id) DO UPDATE SET player_text=excluded.player_text""",
+                (guild, identifier, text))
+        else:
+            await conn.execute("DELETE FROM web_player_goals WHERE guild_id=? AND goal_id=?", (guild, identifier))
+        await bot.db._audit(conn, interaction.guild_id, interaction.user.id, operation,
+                            {"id": identifier, "member": goal["member_id"], "player_text": text})
+    return {"message": "Player-facing goal shared." if text is not None else "Goal no longer shared.",
+            "blocks": []}
 
 TITLES = {"overview": "Club overview", "setup": "Setup & diagnostics", "schedule": "Sessions & rosters",
           "availability": "Availability & leave", "attendance": "Attendance & promotion",
@@ -167,6 +231,10 @@ async def workspace(bot, interaction, params):
                                  "Category scores 1–10, at most one decimal. Overall raw or rounded 6.8–7.2 results remain drafts. "
                                  "Confirm & save never assigns a recruitment role."})
     elif screen in {"recruitment", "goals", "tasks"}:
+        if screen == "goals":
+            result["operations"] += player_goal_operations()
+            result["blocks"].append({"title": "Player sharing is explicit",
+                                     "text": "Goals and completion notes stay private by default. Share a separate player-facing goal below. Players see only shared text, status and deadline, never staff evidence. Stop sharing to withdraw it."})
         kind = {"recruitment": "recruitment", "goals": "goal", "tasks": "task"}[screen]
         query, args_tuple = db.staff_record_query(interaction.guild_id, kind,
                                                   status if status in {"active", "overdue", "completed", "archived", "all"} else "active",

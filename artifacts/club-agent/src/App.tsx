@@ -13,6 +13,7 @@ import { Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 
 const Guide = lazy(() => import('@/pages/guide'));
 const AdminPage = lazy(() => import('@/pages/admin'));
+const DevelopmentPage = lazy(() => import('@/pages/development'));
 const SignInPage = lazy(() => import('@/pages/auth').then((module) => ({ default: module.SignInPage })));
 const SignUpPage = lazy(() => import('@/pages/auth').then((module) => ({ default: module.SignUpPage })));
 
@@ -101,7 +102,7 @@ function ClerkProviderWithRoutes() {
       signInUrl={`${basePath}/sign-in`}
       signUpUrl={`${basePath}/sign-up`}
       localization={{
-        signIn: { start: { title: 'Staff sign in', subtitle: 'Your account links to Discord after sign in' } },
+        signIn: { start: { title: 'Sign in to Club Agent', subtitle: 'Your account links to Discord after sign in' } },
         signUp: { start: { title: 'Create your account', subtitle: 'Registration does not grant club access' } },
       }}
       routerPush={(to) => setLocation(stripBase(to))}
@@ -117,6 +118,7 @@ function ClerkProviderWithRoutes() {
               <Route path="/guide" component={Guide} />
               <Route path="/sign-in/*?" component={SignInPage} />
               <Route path="/sign-up/*?" component={SignUpPage} />
+              <Route path="/development" component={DevelopmentPage} />
               <Route path="/admin" component={AdminPage} />
               <Route path="/admin/:screen" component={AdminPage} />
               <Route component={NotFound} />

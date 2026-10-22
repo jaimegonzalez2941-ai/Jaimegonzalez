@@ -4,7 +4,8 @@ import { Copy, Check, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { errorText } from '@/lib/format';
 
-export function LinkFlow({ onRefresh, refreshing }: { onRefresh: () => void; refreshing: boolean }) {
+export function LinkFlow({ onRefresh, refreshing, audience = 'staff' }: { onRefresh: () => void; refreshing: boolean; audience?: 'staff' | 'player' }) {
+  const player = audience === 'player';
   const create = useCreateClubLink();
   const code = create.data?.code;
   const [left, setLeft] = useState(0);
@@ -28,8 +29,8 @@ export function LinkFlow({ onRefresh, refreshing }: { onRefresh: () => void; ref
     <div className="mx-auto grid min-h-[70dvh] max-w-3xl content-center gap-6 px-4 py-10" data-testid="panel-link">
       <div>
         <p className="font-mono text-xs uppercase tracking-[0.3em] text-[hsl(38_70%_34%)]">Account not linked</p>
-        <h1 className="mt-2 font-display text-3xl font-extrabold md:text-5xl">Prove you are staff, from Discord.</h1>
-        <p className="mt-3 max-w-xl text-muted-foreground">Your website account has no club access yet. Request a one-time code here, then redeem it inside Discord with the account you use in your server. The website never takes a typed-in Discord identity.</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold md:text-5xl">{player ? 'Prove this is you, from Discord.' : 'Prove you are staff, from Discord.'}</h1>
+        <p className="mt-3 max-w-xl text-muted-foreground">{player ? 'Your website account is not tied to a Discord identity yet. Request' : 'Your website account has no club access yet. Request'} a one-time code here, then redeem it inside Discord with the account you use in your server. The website never takes a typed-in Discord identity.</p>
       </div>
       <ol className="space-y-3 text-sm">
         <li className="flex gap-3"><span className="font-mono text-accent-foreground/0 [-webkit-text-stroke:1px_hsl(38_70%_38%)] text-lg font-bold">1</span>Create a code.</li>

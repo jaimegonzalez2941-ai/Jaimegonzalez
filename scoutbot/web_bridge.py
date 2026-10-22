@@ -18,10 +18,10 @@ import discord
 
 from .access import AccessDenied
 from .web_catalog import CONFIRM, MANAGER, READS, SCREENS
-from .web_context import current_context, invoke
+from .web_context import current_context, current_member_context, invoke
 from .web_drafts import draft_action
 from .web_identity import IdentityLinks, WEB_SCHEMA
-from .web_workspace import workspace, verify_setup
+from .web_workspace import workspace, verify_setup, player_development, share_player_goal
 
 logger = logging.getLogger(__name__)
 MAX_BYTES = 128 * 1024
@@ -147,7 +147,7 @@ class WebBridge:
         if kind == "link":
             return await self.identities.challenge(subject)
         actor_id = await self.identities.actor_id(subject)
-        if kind == "access":
+        if kind in {"access", "player.access"}:
             if actor_id is None:
                 return {"linked": False, "servers": []}
             if not self.bot.is_ready():
@@ -161,18 +161,24 @@ class WebBridge:
             name = "Verified Discord account"
             for guild in guilds:
                 try:
-                    interaction = await current_context(self.bot, guild.id, actor_id)
+                    authorize = current_member_context if kind == "player.access" else current_context
+                    interaction = await authorize(self.bot, guild.id, actor_id)
                 except (AccessDenied, discord.NotFound, discord.Forbidden):
                     continue
                 name = interaction.user.display_name
-                servers.append({"id": str(guild.id), "name": interaction.guild.name,
-                                "manager": interaction.user.guild_permissions.manage_guild})
+                server = {"id": str(guild.id), "name": interaction.guild.name}
+                if kind == "access":
+                    server["manager"] = interaction.user.guild_permissions.manage_guild
+                servers.append(server)
             return {"linked": True, "discordName": name, "servers": servers}
         if actor_id is None:
-            raise AccessDenied("Verify your own Discord account before opening the staff workspace.")
+            raise AccessDenied("Verify your own Discord account before opening private club pages.")
         guild = str(request.get("guild", ""))
         if not guild.isdecimal() or not 15 <= len(guild) <= 22:
             raise ValueError("Choose an authorized server.")
+        if kind == "player.development":
+            interaction = await current_member_context(self.bot, guild, actor_id)
+            return await player_development(self.bot, interaction, request.get("params", {}))
         interaction = await current_context(self.bot, guild, actor_id)
         if kind == "workspace":
             params = request.get("params", {})
@@ -185,6 +191,8 @@ class WebBridge:
         if not isinstance(values, dict):
             raise ValueError("Operation fields must be an object.")
         confirmed = request.get("confirmed") is True
+        if operation in {"goal.share", "goal.unshare"}:
+            return await share_player_goal(self.bot, interaction, operation, values, confirmed)
         if operation in CONFIRM and not confirmed:
             raise ValueError("Review this action and explicitly confirm it before submitting.")
         if operation in MANAGER | {"setup.verify"} and not interaction.user.guild_permissions.manage_guild:

@@ -8,6 +8,45 @@
 import * as zod from 'zod';
 
 
+/**
+ * Verified Discord identity and current member servers, not staff authority.
+ */
+export const GetPlayerAccessResponse = zod.object({
+  "linked": zod.boolean(),
+  "discordName": zod.string().optional(),
+  "servers": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+}))
+})
+
+
+/**
+ * Only explicitly shared goals belonging to the verified account. Rechecks membership on every read.
+ */
+export const getPlayerDevelopmentQueryGuildRegExp = new RegExp('^[0-9]{15,22}$');
+export const getPlayerDevelopmentQueryPageMax = 10000;
+
+
+
+export const GetPlayerDevelopmentQueryParams = zod.object({
+  "guild": zod.coerce.string().regex(getPlayerDevelopmentQueryGuildRegExp),
+  "page": zod.coerce.number().int().min(1).max(getPlayerDevelopmentQueryPageMax).optional()
+})
+
+export const GetPlayerDevelopmentResponse = zod.object({
+  "goals": zod.array(zod.object({
+  "id": zod.number().int(),
+  "text": zod.string(),
+  "status": zod.enum(['active', 'completed']),
+  "dueAt": zod.string(),
+  "timezone": zod.string()
+})),
+  "page": zod.number().int(),
+  "hasNext": zod.boolean()
+})
+
+
 export const GetClubPublicResponse = zod.object({
   "connected": zod.boolean(),
   "installUrl": zod.string().nullish(),

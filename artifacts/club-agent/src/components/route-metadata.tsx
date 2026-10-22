@@ -5,15 +5,17 @@ import { SCREENS } from '@/lib/screens';
 export function RouteMetadata() {
   const [location] = useLocation();
   useEffect(() => {
-    const privatePage = /^\/(admin|sign-in|sign-up)(\/|$)/.test(location);
+    const privatePage = /^\/(admin|development|sign-in|sign-up)(\/|$)/.test(location);
     const screen = SCREENS.find((s) => location === `/admin/${s.key}`);
     const title = location === '/' ? 'Club Agent — The record speaks. Staff decide.'
       : location === '/guide' ? 'Start here — Club Agent'
-      : location.startsWith('/sign-in') ? 'Staff sign in — Club Agent'
+      : location === '/development' ? 'My development — Club Agent'
+      : location.startsWith('/sign-in') ? 'Sign in — Club Agent'
       : location.startsWith('/sign-up') ? 'Create your account — Club Agent'
       : location.startsWith('/admin') ? `${screen?.label ?? 'Staff workspace'} — Club Agent`
       : 'Page not found — Club Agent';
-    const description = location === '/guide'
+    const description = location === '/development' ? 'Your own shared development goals, deadlines and progress, visible only after you verify your Discord account.'
+      : location === '/guide'
       ? 'A workflow-first guide to club setup, scouting, recruitment, scheduling and attendance with Club Agent.'
       : privatePage ? 'Sign in and verify your own Discord account to access your club’s private staff workflows.'
       : 'Explainable Pro Clubs scouting, trusted match evidence and vacation-aware attendance. Private staff workflows alongside Discord.';

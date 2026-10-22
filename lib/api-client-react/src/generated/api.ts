@@ -25,8 +25,11 @@ import type {
   ClubActionInput,
   ClubPublic,
   GetClubWorkspaceParams,
+  GetPlayerDevelopmentParams,
   HealthStatus,
   LinkChallenge,
+  PlayerAccess,
+  PlayerDevelopment,
   WorkspacePage
 } from './api.schemas';
 
@@ -56,6 +59,161 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export const getGetPlayerAccessUrl = () => {
+
+
+
+
+  return `/api/club/player/access`
+}
+
+/**
+ * Verified Discord identity and current member servers, not staff authority.
+ */
+export const getPlayerAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlayerAccess> => {
+
+  return customFetch<PlayerAccess>(getGetPlayerAccessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlayerAccessQueryKey = () => {
+    return [
+    `/api/club/player/access`
+    ] as const;
+    }
+
+
+export const getGetPlayerAccessQueryOptions = <TData = Awaited<ReturnType<typeof getPlayerAccess>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlayerAccessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlayerAccess>>> = ({ signal }) => getPlayerAccess({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlayerAccess>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlayerAccessQueryResult = NonNullable<Awaited<ReturnType<typeof getPlayerAccess>>>
+export type GetPlayerAccessQueryError = ErrorType<unknown>
+
+
+
+export function useGetPlayerAccess<TData = Awaited<ReturnType<typeof getPlayerAccess>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlayerAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPlayerDevelopmentUrl = (params: GetPlayerDevelopmentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/club/player/development?${stringifiedParams}` : `/api/club/player/development`
+}
+
+/**
+ * Only explicitly shared goals belonging to the verified account. Rechecks membership on every read.
+ */
+export const getPlayerDevelopment = async (params: GetPlayerDevelopmentParams, options?: Parameters<typeof customFetch>[1]): Promise<PlayerDevelopment> => {
+
+  return customFetch<PlayerDevelopment>(getGetPlayerDevelopmentUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPlayerDevelopmentQueryKey = (params?: GetPlayerDevelopmentParams,) => {
+    return [
+    `/api/club/player/development`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPlayerDevelopmentQueryOptions = <TData = Awaited<ReturnType<typeof getPlayerDevelopment>>, TError = ErrorType<void>>(params: GetPlayerDevelopmentParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerDevelopment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPlayerDevelopmentQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPlayerDevelopment>>> = ({ signal }) => getPlayerDevelopment(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPlayerDevelopment>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPlayerDevelopmentQueryResult = NonNullable<Awaited<ReturnType<typeof getPlayerDevelopment>>>
+export type GetPlayerDevelopmentQueryError = ErrorType<void>
+
+
+
+export function useGetPlayerDevelopment<TData = Awaited<ReturnType<typeof getPlayerDevelopment>>, TError = ErrorType<void>>(
+ params: GetPlayerDevelopmentParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPlayerDevelopment>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPlayerDevelopmentQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetClubPublicUrl = () => {
 

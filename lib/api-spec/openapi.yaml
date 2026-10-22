@@ -11,6 +11,37 @@ tags:
   - name: health
     description: Health operations
 paths:
+  /club/player/access:
+    get:
+      operationId: getPlayerAccess
+      description: Verified Discord identity and current member servers, not staff authority.
+      responses:
+        "200":
+          description: Current member servers only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerAccess"
+  /club/player/development:
+    get:
+      operationId: getPlayerDevelopment
+      description: Only explicitly shared goals belonging to the verified account. Rechecks membership on every read.
+      parameters:
+        - {name: guild, in: query, required: true, schema: {type: string, pattern: '^[0-9]{15,22}$'}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, maximum: 10000}}
+      responses:
+        "200":
+          description: Allowlisted player-facing goals; no staff evidence or operations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerDevelopment"
+        "401":
+          description: Website sign-in required
+        "403":
+          description: Verified identity or current membership missing
+        "503":
+          description: Current Discord access could not be verified
   /club/public:
     get:
       operationId: getClubPublic
@@ -89,6 +120,39 @@ paths:
                 $ref: "#/components/schemas/HealthStatus"
 components:
   schemas:
+    PlayerServer:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: {type: string}
+        name: {type: string}
+    PlayerAccess:
+      type: object
+      additionalProperties: false
+      required: [linked, servers]
+      properties:
+        linked: {type: boolean}
+        discordName: {type: string}
+        servers: {type: array, items: {$ref: "#/components/schemas/PlayerServer"}}
+    PlayerGoal:
+      type: object
+      additionalProperties: false
+      required: [id, text, status, dueAt, timezone]
+      properties:
+        id: {type: integer}
+        text: {type: string}
+        status: {type: string, enum: [active, completed]}
+        dueAt: {type: string}
+        timezone: {type: string}
+    PlayerDevelopment:
+      type: object
+      additionalProperties: false
+      required: [goals, page, hasNext]
+      properties:
+        goals: {type: array, items: {$ref: "#/components/schemas/PlayerGoal"}}
+        page: {type: integer}
+        hasNext: {type: boolean}
     ClubPublic:
       type: object
       required: [connected]

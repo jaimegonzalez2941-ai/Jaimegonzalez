@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { GetClubWorkspaceQueryParams, RunClubActionBody } from "@workspace/api-zod";
+import { GetClubWorkspaceQueryParams, RunClubActionBody, GetPlayerDevelopmentQueryParams,
+  GetPlayerDevelopmentResponse, GetPlayerAccessResponse } from "@workspace/api-zod";
 import { BridgeError, clubBridge } from "../lib/clubBridge";
 import { isSameOriginMutation } from "../lib/browserOrigin";
 
@@ -44,6 +45,30 @@ clubRouter.use((req: Request, res: Response, next: NextFunction) => {
 clubRouter.get("/access", async (req, res, next) => {
   try {
     res.json(await clubBridge({ kind: "access", subject: getAuth(req).userId }));
+  } catch (error) { next(error); }
+});
+clubRouter.get("/player/access", async (req, res, next) => {
+  if (Object.keys(req.query).length) {
+    res.status(400).json({ error: "Player access does not accept identity or server overrides." });
+    return;
+  }
+  try {
+    res.json(GetPlayerAccessResponse.parse(
+      await clubBridge({ kind: "player.access", subject: getAuth(req).userId })));
+  } catch (error) { next(error); }
+});
+clubRouter.get("/player/development", async (req, res, next) => {
+  const parsed = GetPlayerDevelopmentQueryParams.strict().safeParse({
+    ...req.query, page: req.query.page === undefined ? 1 : Number(req.query.page),
+  });
+  if (!parsed.success) {
+    res.status(400).json({ error: "Choose a member server and valid page. Player identity cannot be supplied." });
+    return;
+  }
+  try {
+    res.json(GetPlayerDevelopmentResponse.parse(
+      await clubBridge({ kind: "player.development", subject: getAuth(req).userId,
+        guild: parsed.data.guild, params: parsed.data })));
   } catch (error) { next(error); }
 });
 clubRouter.post("/link", async (req, res, next) => {

@@ -10,7 +10,7 @@ from .access import AccessDenied, staff_access
 from .web_catalog import command_for, field
 
 
-async def current_context(bot, guild_id, actor_id):
+async def current_member_context(bot, guild_id, actor_id):
     """Never use gateway member/role caches as website authorization authority."""
     if not bot.is_ready():
         raise ConnectionError("Discord is disconnected. Current server access cannot be verified.")
@@ -22,6 +22,11 @@ async def current_context(bot, guild_id, actor_id):
     guild._members[actor.id] = actor
     guild._members[me.id] = me
     interaction = WebInteraction(bot, guild, actor)
+    return interaction
+
+
+async def current_context(bot, guild_id, actor_id):
+    interaction = await current_member_context(bot, guild_id, actor_id)
     await staff_access(interaction)
     return interaction
 

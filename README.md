@@ -196,8 +196,16 @@ Match ratings are reported EA input, not human scouting scores; the scouting no-
 
 The workspace is available in Discord and the private companion website. Both interfaces use
 the same Python operations and SQLite records. There is no public recruitment board, public
-player dossier, player-facing development dashboard, AI prediction service, automatic role
+player dossier, public development dashboard, AI prediction service, automatic role
 change or score recalculation.
+
+Players can open **My development** at `/development`, sign in, and verify their own
+Discord account with the single-use `/website` challenge. Current membership is checked
+on each read. Only separately shared goal text, status and deadlines appear there.
+Existing goal descriptions, staff criteria, completion notes and scouting evidence remain
+private. Staff use **Share a goal with its player** in the website's Staff goals screen
+to write player-facing instructions, or **Stop sharing a goal** to withdraw them.
+Sharing does not change scores, recruitment roles or goal completion.
 
 ### Access, privacy and dates
 

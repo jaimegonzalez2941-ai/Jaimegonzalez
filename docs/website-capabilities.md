@@ -18,6 +18,8 @@ individual member from Discord; unavailable authorization fails closed.
 | Evaluations | `start_draft`, `draft`, `change_draft` | actor-owned drafts, revision checks, full rubric validation and explicit save/discard |
 | Recruitment | `scout shortlist add/list/remove`, `scout assign` | eligible staff owners; archive confirmation; Manage Roles, hierarchy, evidence and override checks |
 | Staff goals | `development goal/edit/review/complete` | existing validation, atomic audit and idempotent completion |
+| Share / withdraw player goals | staff-only `goal.share` / `goal.unshare` | explicit confirmation, separate player text, server-local goal ID, atomic audit; never automatically publish private descriptions or outcomes |
+| My development | `player.access` / `player.development` | verified linked Discord actor; fresh membership, no staff authority, read-only own goals only, bounded pages, fixed field allowlist |
 | Tasks / briefing | `assistant task add/edit/list/complete`, `assistant brief` | staff; on-demand only; no invented evidence |
 | Launch panel | `/start_panel` in Discord | manager-only linked workflow; preserve uncertain-publication reconciliation |
 | Docket | `/scout docket` in Discord | clearly linked; no automatic republishing |
@@ -28,3 +30,11 @@ Interactive Discord guide/panel controls stay clearly linked to Discord.
 Web evidence pages use bounded record queries. Long dossier/briefing pages reuse
 the existing lazy snapshot renderer and reauthorize each continuation.
 No sample club data or automatic membership/role grants are introduced.
+
+`GET /api/club/player/access` returns only current member server IDs/names, not
+administration capabilities. `GET /api/club/player/development?guild=…&page=…`
+accepts no player ID, search, staff screen, snapshot or operation. Its projection
+contains only shared text, goal ID, active/completed status, deadline and timezone.
+Unshared goals remain invisible even to their target player. Staff retain the
+existing independent staff authorization path; player membership never authorizes
+workspace pages or mutations. Both player endpoints remain authenticated and no-store.

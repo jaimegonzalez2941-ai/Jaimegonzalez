@@ -53,7 +53,7 @@ An always-on Discord bot and companion website for private FC Pro Clubs scouting
 
 - Private scorecards, scouting history, staff docket, recruitment roles, EA handle linking, match statistics, weekly availability, approved leave, schedules, RSVPs, attendance, and promotion evidence.
 - `/club` is the private Start Here workflow menu, with a categorized reference. `/scout` is retained for backward-compatible staff commands.
-- Coach/owner operations are available in Discord and the private companion site. Both use the bot's repositories, validation and audit history. Player-facing development dashboards remain deferred.
+- Coach/owner operations are available in Discord and the private companion site. Both use the bot's repositories, validation and audit history. The own-account player view shows only explicitly shared goal text, status and deadline; private scouting and staff evidence never become player authority.
 - Staff workspace mutations and audits share a serialized transaction; IDs are server-local. Recruitment deadlines are follow-ups, not player decisions; completion never changes scores or roles.
 - Workspace views contain saved evidence only, paginate full observations, and recheck staff access, requesting user and server on each continuation. Assignees use a current single-member REST check, never privileged member enumeration.
 - Briefings are on-demand only, preserve current attendance protections, and do not depend on session notification delivery.

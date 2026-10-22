@@ -47,6 +47,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
   const links = [
     { href: '/', label: 'Features' },
     { href: '/guide', label: 'Start here' },
+    { href: '/development', label: 'My development' },
   ];
   return (
     <div className="grain min-h-[100dvh] bg-background">
@@ -92,6 +93,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           </div>
           <div className="flex gap-6 text-sm">
             <Link href="/guide" className="hover:text-accent">Start here</Link>
+            <Link href="/development" className="hover:text-accent" data-testid="link-footer-development">My development</Link>
             <Link href="/sign-in" className="hover:text-accent">Sign in</Link>
           </div>
         </div>

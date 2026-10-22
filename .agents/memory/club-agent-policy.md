@@ -29,15 +29,23 @@ completed any real-world action."
 **How to apply:** Do not use guide navigation as evidence of setup, attendance, recruitment,
 or task completion, or let browsing execute the suggested actions.
 
-The companion website's first release is a public site with bot features and "why we're
-different," plus a private admin UI. Public/player development dashboards come later.
+The companion website began with public features and "why we're different," plus a
+private admin UI. Its later player release is limited to an own-account development view.
 
 **Why:** The user explicitly requested both website surfaces but prioritized "Right now private
 admin UI with complete optimization" and deferred the player development dashboard.
 
-**How to apply:** Build the public explanation and real private administration together, without
-exposing player development, scouting, or attendance records publicly. The earlier bot-only scope
-does not prohibit this requested companion website.
+**How to apply:** Keep development, scouting and attendance records off public pages.
+The own-account player release does not grant staff access or expose staff evidence.
+
+Player goals must be shared explicitly as separate player-facing text, never automatically
+published from existing staff descriptions, criteria or completion notes.
+
+**Why:** Existing goals were created as private staff evidence. Retrofitting player access
+must not silently change the audience of that historical text.
+
+**How to apply:** Preserve opt-in sharing and a fixed player projection; new player features
+must use the verified own Discord identity and fresh membership checks, not staff endpoints.
 
 The user corrected their earlier response: members with the Trialist and Dev Squad roles should
 not have access to `#staff-reports`, including through personal View Channel overrides.

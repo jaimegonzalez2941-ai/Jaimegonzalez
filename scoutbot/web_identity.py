@@ -8,6 +8,10 @@ import discord
 from discord import app_commands
 
 WEB_SCHEMA = """
+CREATE TABLE IF NOT EXISTS web_player_goals (
+ guild_id TEXT NOT NULL, goal_id INTEGER NOT NULL, player_text TEXT NOT NULL,
+ PRIMARY KEY(guild_id,goal_id)
+);
 CREATE TABLE IF NOT EXISTS web_discord_links (
  subject TEXT PRIMARY KEY, discord_id TEXT NOT NULL, linked_at TEXT NOT NULL
 );

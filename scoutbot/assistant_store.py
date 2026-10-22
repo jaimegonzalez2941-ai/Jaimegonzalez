@@ -35,6 +35,22 @@ def deadline(date, time, timezone):
     return stamp(local_datetime(date, time, timezone))
 
 
+def validated_deadline(due_at, timezone):
+    zone(timezone)
+    try:
+        parsed = datetime.fromisoformat(due_at)
+        if parsed.tzinfo is None:
+            raise ValueError
+        return stamp(parsed)
+    except (TypeError, ValueError):
+        raise ValueError("A timezone-aware deadline is required.") from None
+
+
+def validate_owner(owner):
+    if not str(owner).isascii() or not str(owner).isdecimal() or int(owner) <= 0:
+        raise ValueError("A staff owner is required.")
+
+
 class AssistantStore:
     async def save_staff_record(self, guild, actor, kind, owner, description, due_at,
                                timezone, *, member=None, position=None, criteria=""):
@@ -47,16 +63,8 @@ class AssistantStore:
             raise ValueError("Choose a supported target position.")
         if kind == "goal":
             criteria = bounded(criteria, "Observable success criteria")
-        zone(timezone)
-        try:
-            parsed = datetime.fromisoformat(due_at)
-            if parsed.tzinfo is None:
-                raise ValueError
-            due_at = stamp(parsed)
-        except (TypeError, ValueError):
-            raise ValueError("A timezone-aware deadline is required.") from None
-        if not str(owner).isascii() or not str(owner).isdecimal() or int(owner) <= 0:
-            raise ValueError("A staff owner is required.")
+        due_at = validated_deadline(due_at, timezone)
+        validate_owner(owner)
         now = stamp(utc_now())
         async with self.transaction() as conn:
             old = None
@@ -93,6 +101,47 @@ class AssistantStore:
                                "description": description, "criteria": criteria,
                                "due_at": due_at, "timezone": timezone})
         return identifier
+
+    async def edit_staff_record(self, guild, actor, kind, identifier, *,
+                               owner=None, due_at=None, timezone=None):
+        """Edit unfinished work in place; eligibility of a new owner is checked by commands."""
+        if kind not in ("goal", "task"):
+            raise ValueError("Only development goals and staff tasks can be edited here.")
+        if owner is None and due_at is None and timezone is None:
+            raise ValueError("Choose a new staff owner or deadline.")
+        if owner is not None:
+            validate_owner(owner)
+        if (due_at is None) != (timezone is None):
+            raise ValueError("Supply both a deadline and its timezone.")
+        if due_at is not None:
+            due_at = validated_deadline(due_at, timezone)
+        async with self.transaction() as conn:
+            async with conn.execute(
+                "SELECT * FROM staff_records WHERE guild_id=? AND kind=? AND id=?",
+                (str(guild), kind, identifier),
+            ) as cur:
+                row = await cur.fetchone()
+            if row is None:
+                raise ValueError("No matching record with that ID in this server.")
+            if row["status"] != "active":
+                raise ValueError("Completed records cannot be edited; their history is preserved.")
+            before = dict(row)
+            after = before | {
+                "owner_id": str(owner) if owner is not None else row["owner_id"],
+                "due_at": due_at if due_at is not None else row["due_at"],
+                "timezone": timezone if timezone is not None else row["timezone"],
+            }
+            if after == before:
+                return False
+            after["updated_at"] = stamp(utc_now())
+            await conn.execute(
+                """UPDATE staff_records SET owner_id=?,due_at=?,timezone=?,updated_at=?
+                WHERE guild_id=? AND kind=? AND id=?""",
+                (after["owner_id"], after["due_at"], after["timezone"], after["updated_at"],
+                 str(guild), kind, identifier))
+            await self._audit(conn, guild, actor, f"{kind}.updated",
+                              {"id": identifier, "before": before, "after": after})
+            return True
 
     async def finish_staff_record(self, guild, actor, kind, identifier, outcome=None):
         if kind not in ("recruitment", "goal", "task"):

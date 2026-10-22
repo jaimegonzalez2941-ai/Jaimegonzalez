@@ -163,6 +163,8 @@ archived, all. No recruitment roles or scoring rules change.
 ```text
 /development goal member:@Player description:Improve pressured passing criteria:Observe five accurate forward passes during a training session target_date:2026-11-05 time:20:00 timezone:America/Chicago responsible:@Coach
 /development review member:@Player status:active
+/development edit goal_id:2 responsible:@NewCoach
+/development edit goal_id:2 target_date:2026-11-06 time:20:00 timezone:America/Chicago
 /development complete goal_id:2 outcome:Observed four of five accurate passes; review again next week
 /development review member:@Player status:completed
 ```
@@ -178,6 +180,8 @@ proof of improvement or a change to scouting scores.
 ```text
 /assistant task add owner:@Coach description:Review the defender evidence due_date:2026-11-02 time:19:00 timezone:America/Chicago
 /assistant task list status:overdue
+/assistant task edit task_id:3 owner:@NewCoach
+/assistant task edit task_id:3 due_date:2026-11-05 time:19:00 timezone:America/Chicago
 /assistant task complete task_id:3 outcome:Reviewed both evaluations and recorded the next action
 /assistant task list status:completed
 /assistant brief
@@ -186,6 +190,15 @@ proof of improvement or a change to scouting scores.
 Tasks have an accountable eligible staff owner, deadline and required completion note; filters
 are active/overdue/completed/all. Completed items remain reviewable; repeated completion cannot
 overwrite the original outcome or create duplicate completion records.
+
+Staff can use `/development edit` and `/assistant task edit` to reassign unfinished work,
+change its deadline, or do both at once. IDs are local to the current server. Supply the
+date, time and timezone together when changing a deadline; omitted fields stay unchanged.
+New owners must pass a current single-member staff check, but the previous owner does
+not need to remain on staff or in the server. Edits retain the same ID, player, criteria
+and creation history, and save before/after audit values in the same transaction.
+Completed records cannot be edited. These edits do not change scores, recruitment roles
+or notification delivery.
 
 The private **on-demand** briefing shows:
 

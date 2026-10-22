@@ -113,6 +113,119 @@ class AssistantStoreTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.db.all("SELECT * FROM evaluations"), [])
         self.assertEqual(await self.db.all("SELECT * FROM stage_roles"), [])
 
+    async def test_edit_preserves_identity_and_history_across_restart(self):
+        for kind in ("goal", "task"):
+            identifier = await self.save(kind, delta=-1)
+            before = (await self.db.staff_records(1, kind))[0]
+            due = deadline("2026-11-05", "20:00", "America/Chicago")
+            self.assertTrue(await self.db.edit_staff_record(
+                1, 8, kind, identifier, owner=9, due_at=due, timezone="America/Chicago"))
+            after = (await self.db.staff_records(1, kind))[0]
+            self.assertEqual(after, before | {
+                "owner_id": "9", "due_at": due, "timezone": "America/Chicago",
+                "updated_at": after["updated_at"]})
+            audit = await self.db.one(
+                "SELECT * FROM audit_log WHERE action=?", (kind + ".updated",))
+            self.assertEqual((audit["guild_id"], audit["actor_id"]), ("1", "8"))
+            self.assertEqual(json.loads(audit["details"]),
+                             {"id": identifier, "before": before, "after": after})
+            self.assertTrue(await self.db.edit_staff_record(1, 8, kind, identifier, owner=10))
+            self.assertTrue(await self.db.edit_staff_record(
+                1, 8, kind, identifier, due_at=stamp(self.now), timezone="UTC"))
+            self.assertFalse(await self.db.edit_staff_record(1, 8, kind, identifier, owner=10))
+            await self.db.finish_staff_record(1, 8, kind, identifier, "Observed success")
+            completed = (await self.db.staff_records(1, kind, "completed"))[0]
+            completion_audit = await self.db.all(
+                "SELECT * FROM audit_log WHERE action=?", (kind + ".completed",))
+            for values in ({"owner": 11}, {"due_at": due, "timezone": "UTC"},
+                           {"owner": 11, "due_at": due, "timezone": "UTC"}):
+                with self.assertRaisesRegex(ValueError, "Completed"):
+                    await self.db.edit_staff_record(1, 8, kind, identifier, **values)
+            await self.db.close()
+            await self.db.open()
+            self.assertEqual(await self.db.staff_records(1, kind, "all"), [completed])
+            self.assertEqual((completed["id"], completed["owner_id"], completed["completed_by"],
+                              completed["outcome"]), (identifier, "10", "8", "Observed success"))
+            self.assertEqual(await self.db.all(
+                "SELECT * FROM audit_log WHERE action=?", (kind + ".completed",)), completion_audit)
+            self.assertEqual(len(await self.db.all(
+                "SELECT * FROM audit_log WHERE action=?", (kind + ".updated",))), 3)
+
+    async def test_edit_isolation_validation_and_audit_rollback(self):
+        for kind in ("goal", "task"):
+            identifier = await self.save(kind)
+            # The same server-local ID can identify a different kind in another server.
+            other_kind = "task" if kind == "goal" else "goal"
+            other_id = await self.save(other_kind, guild=identifier + 1)
+            before = await self.db.all("SELECT * FROM staff_records ORDER BY guild_id,id")
+            audits = await self.db.all("SELECT * FROM audit_log")
+            for guild, target_kind, target_id in (
+                (999, kind, identifier), (1, other_kind, identifier),
+                (identifier + 1, kind, other_id), (1, kind, 999),
+                (1, "recruitment", identifier), (1, "unknown", identifier),
+            ):
+                with self.assertRaises(ValueError):
+                    await self.db.edit_staff_record(guild, 8, target_kind, target_id, owner=9)
+            for values in (
+                {}, {"owner": 0}, {"owner": -1}, {"owner": "invalid"}, {"owner": "９"},
+                {"due_at": stamp(self.now)}, {"timezone": "UTC"},
+                {"due_at": "2026-11-01", "timezone": "UTC"},
+                {"due_at": "garbage", "timezone": "UTC"},
+                {"due_at": stamp(self.now), "timezone": "Invalid/Zone"},
+            ):
+                with self.subTest(kind=kind, values=values), self.assertRaises(ValueError):
+                    await self.db.edit_staff_record(1, 8, kind, identifier, **values)
+            with patch.object(self.db, "_audit", AsyncMock(side_effect=RuntimeError("audit failed"))):
+                with self.assertRaises(RuntimeError):
+                    await self.db.edit_staff_record(
+                        1, 8, kind, identifier, owner=9,
+                        due_at=stamp(self.now), timezone="UTC")
+            self.assertEqual(await self.db.all("SELECT * FROM staff_records ORDER BY guild_id,id"), before)
+            self.assertEqual(await self.db.all("SELECT * FROM audit_log"), audits)
+
+    async def test_concurrent_edits_and_completion_serialize_history(self):
+        for kind in ("goal", "task"):
+            identifier = await self.save(kind)
+            before = (await self.db.staff_records(1, kind))[0]
+            # Partial edits must not overwrite unrelated fields with stale values.
+            await asyncio.gather(
+                self.db.edit_staff_record(1, 8, kind, identifier, owner=9),
+                self.db.edit_staff_record(1, 8, kind, identifier,
+                                          due_at=stamp(self.now), timezone="UTC"))
+            row = (await self.db.staff_records(1, kind))[0]
+            self.assertEqual((row["owner_id"], row["due_at"]), ("9", stamp(self.now)))
+            audits = await self.db.all(
+                "SELECT details FROM audit_log WHERE action=? ORDER BY id", (kind + ".updated",))
+            first, second = [json.loads(a["details"]) for a in audits]
+            self.assertEqual(first["before"], before)
+            self.assertEqual(first["after"], second["before"])
+            self.assertEqual(second["after"], row)
+            results = await asyncio.gather(
+                self.db.finish_staff_record(1, 8, kind, identifier, "Final observation"),
+                self.db.edit_staff_record(1, 8, kind, identifier, owner=11),
+                return_exceptions=True)
+            self.assertTrue(results[0])
+            completed = (await self.db.staff_records(1, kind, "completed"))[0]
+            if isinstance(results[1], ValueError):
+                self.assertEqual(completed["owner_id"], "9")
+            else:
+                self.assertIs(results[1], True)
+                self.assertEqual(completed["owner_id"], "11")
+            self.assertEqual(completed["outcome"], "Final observation")
+            audit_count = len(await self.db.all("SELECT * FROM audit_log"))
+            with self.assertRaises(ValueError):
+                await self.db.edit_staff_record(1, 8, kind, identifier, owner=12)
+            self.assertEqual(len(await self.db.all("SELECT * FROM audit_log")), audit_count)
+
+    async def test_edit_same_local_id_changes_only_selected_server(self):
+        for kind in ("goal", "task"):
+            first = await self.save(kind)
+            second = await self.save(kind, guild=2)
+            self.assertEqual(first, second)
+            other = await self.db.staff_records(2, kind)
+            await self.db.edit_staff_record(1, 8, kind, first, owner=9)
+            self.assertEqual(await self.db.staff_records(2, kind), other)
+
     async def test_failed_audit_rolls_back_mutation(self):
         with patch.object(self.db, "_audit", AsyncMock(side_effect=RuntimeError("audit failed"))):
             with self.assertRaises(RuntimeError):

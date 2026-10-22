@@ -26,6 +26,25 @@ async def acknowledge(interaction, message):
                                     allowed_mentions=discord.AllowedMentions.none())
 
 
+async def edit_work(bot, interaction, kind, identifier, owner, date, time, timezone):
+    await staff_access(interaction)
+    parts = (date, time, timezone)
+    if any(part is not None for part in parts) and any(part is None for part in parts):
+        raise ValueError("To change a deadline, supply the date, time and timezone together.")
+    due = deadline(date, time, timezone) if date is not None else None
+    if owner is None and due is None:
+        raise ValueError("Choose a new staff owner or deadline.")
+    await interaction.response.defer(ephemeral=True)
+    current = await staff_assignee(interaction, owner) if owner is not None else None
+    changed = await bot.db.edit_staff_record(
+        interaction.guild_id, interaction.user.id, kind, identifier,
+        owner=current.id if current is not None else None, due_at=due, timezone=timezone)
+    label = "Development goal" if kind == "goal" else "Staff task"
+    await acknowledge(interaction, f"{label} #{identifier} updated; ID and history preserved. "
+                      "No scores, roles or notifications changed." if changed else
+                      f"{label} #{identifier} is unchanged; no duplicate audit record created.")
+
+
 class StaffGroup(app_commands.Group):
     async def interaction_check(self, interaction):
         await staff_access(interaction)
@@ -110,6 +129,15 @@ class DevelopmentCommands(StaffGroup):
         await acknowledge(interaction, f"Development goal #{identifier} saved with observable criteria. "
                           "No scouting scores changed.")
 
+    @app_commands.command(description="Reassign an unfinished goal or change its deadline; retain its ID and history")
+    @app_commands.describe(responsible="New owner: must currently be staff in this server",
+                           target_date="YYYY-MM-DD; supply time and timezone too",
+                           time="24-hour HH:MM", timezone="IANA timezone")
+    async def edit(self, interaction: discord.Interaction, goal_id: app_commands.Range[int, 1],
+                   responsible: discord.Member | None = None, target_date: str | None = None,
+                   time: str | None = None, timezone: str | None = None):
+        await edit_work(self.bot, interaction, "goal", goal_id, responsible, target_date, time, timezone)
+
     @app_commands.command(description="Review active, overdue or completed goals and outcome notes")
     @app_commands.choices(status=STATUS_CHOICES)
     async def review(self, interaction: discord.Interaction, member: discord.Member | None = None,
@@ -156,6 +184,15 @@ class TaskCommands(StaffGroup):
         identifier = await self.bot.db.save_staff_record(
             interaction.guild_id, interaction.user.id, "task", owner.id, description, due, timezone)
         await acknowledge(interaction, f"Staff task #{identifier} created. No reminder or DM is scheduled.")
+
+    @app_commands.command(description="Reassign an unfinished task or change its deadline; retain its ID and history")
+    @app_commands.describe(owner="New owner: must currently be staff in this server",
+                           due_date="YYYY-MM-DD; supply time and timezone too",
+                           time="24-hour HH:MM", timezone="IANA timezone")
+    async def edit(self, interaction: discord.Interaction, task_id: app_commands.Range[int, 1],
+                   owner: discord.Member | None = None, due_date: str | None = None,
+                   time: str | None = None, timezone: str | None = None):
+        await edit_work(self.bot, interaction, "task", task_id, owner, due_date, time, timezone)
 
     @app_commands.command(description="Review active, overdue or completed staff tasks and their completion records")
     @app_commands.choices(status=STATUS_CHOICES)

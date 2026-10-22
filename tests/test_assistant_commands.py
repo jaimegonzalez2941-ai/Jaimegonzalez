@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 
 from scoutbot.access import AccessDenied, staff_assignee
+from scoutbot.assistant_store import deadline
 from scoutbot.assistant_ui import StaffPages, pages
 from scoutbot.bot import ScoutBot
 from scoutbot.config import Settings
@@ -66,7 +67,7 @@ class AssistantCommandTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(AccessDenied):
                     await command.callback(command.parent, dm, **args)
             count += 1
-        self.assertEqual(count, 12)
+        self.assertEqual(count, 14)
         self.assertEqual(await self.bot.db.all("SELECT * FROM staff_records"), [])
 
     async def test_nested_groups_have_staff_checks_and_serialize(self):
@@ -96,6 +97,115 @@ class AssistantCommandTests(unittest.IsolatedAsyncioTestCase):
         other.user.guild = SimpleNamespace(id=2)
         with self.assertRaises(AccessDenied):
             await staff_assignee(self.staff, other.user)
+
+    async def test_edit_transfers_departed_owner_and_edits_deadline_without_lookup(self):
+        await self.bot.db.configure(1, 7, staff_role=99, staff_channel=2, recap_channel=3,
+                                    source_kind="bot", source_id=4)
+        coach = self.interaction(8, roles=(99,))
+        self.guild.fetch_member.return_value = coach.user
+        for kind, path, id_key, owner_key, date_key in (
+            ("goal", "development edit", "goal_id", "responsible", "target_date"),
+            ("task", "assistant task edit", "task_id", "owner", "due_date"),
+        ):
+            identifier = await self.bot.db.save_staff_record(
+                1, 7, kind, 123, "Original work", deadline("2026-10-30", "20:00", "UTC"),
+                "UTC", member=42, criteria="Five observed accurate passes")
+            before = (await self.bot.db.staff_records(1, kind))[0]
+            self.guild.fetch_member.reset_mock()
+            # No lookup of the departed historical owner is needed for deadline-only edits.
+            await self.invoke(path, coach, **{id_key: identifier, date_key: "2026-11-05",
+                                             "time": "20:00", "timezone": "America/Chicago"})
+            self.guild.fetch_member.assert_not_awaited()
+            row = (await self.bot.db.staff_records(1, kind))[0]
+            self.assertEqual((row["owner_id"], row["due_at"], row["timezone"]),
+                             ("123", "2026-11-06T02:00:00+00:00", "America/Chicago"))
+            await self.invoke(path, coach, **{id_key: identifier, owner_key: coach.user})
+            self.guild.fetch_member.assert_awaited_once_with(8)
+            row = (await self.bot.db.staff_records(1, kind))[0]
+            self.assertEqual(row["owner_id"], "8")
+            for key in ("id", "created_at", "created_by", "member_id", "description", "criteria",
+                        "completed_at", "completed_by", "outcome"):
+                self.assertEqual(row[key], before[key])
+            await self.invoke(path, coach, **{
+                id_key: identifier, owner_key: coach.user, date_key: "2026-11-06",
+                "time": "21:00", "timezone": "UTC"})
+            await self.bot.db.finish_staff_record(1, 8, kind, identifier, "Observed outcome")
+            completed = await self.bot.db.staff_records(1, kind, "all")
+            audits = await self.bot.db.all("SELECT * FROM audit_log")
+            with self.assertRaisesRegex(ValueError, "Completed"):
+                await self.invoke(path, coach, **{id_key: identifier, date_key: "2026-11-07",
+                                                 "time": "21:00", "timezone": "UTC"})
+            with self.assertRaisesRegex(ValueError, "Completed"):
+                await self.invoke(path, coach, **{id_key: identifier, owner_key: coach.user})
+            self.assertEqual(await self.bot.db.staff_records(1, kind, "all"), completed)
+            self.assertEqual(await self.bot.db.all("SELECT * FROM audit_log"), audits)
+        for call in coach.followup.send.call_args_list:
+            self.assertTrue(call.kwargs["ephemeral"])
+            self.assertEqual(call.kwargs["allowed_mentions"].to_dict(),
+                             discord.AllowedMentions.none().to_dict())
+        self.assertEqual(await self.bot.db.all("SELECT * FROM evaluations"), [])
+        self.assertEqual(await self.bot.db.all("SELECT * FROM stage_roles"), [])
+
+    async def test_edit_rejects_stale_ineligible_and_unavailable_assignees_atomically(self):
+        selected = self.interaction(8, manager=True)
+        foreign = self.interaction(9, manager=True)
+        foreign.user.guild = SimpleNamespace(id=2)
+        for kind, path, id_key, owner_key in (
+            ("goal", "development edit", "goal_id", "responsible"),
+            ("task", "assistant task edit", "task_id", "owner"),
+        ):
+            identifier = await self.bot.db.save_staff_record(
+                1, 7, kind, 123, "Original work", deadline("2026-10-30", "20:00", "UTC"),
+                "UTC", member=42, criteria="Observe five passes")
+            before = await self.bot.db.staff_records(1, kind)
+            audits = await self.bot.db.all("SELECT * FROM audit_log")
+            self.guild.fetch_member.return_value = self.interaction(8).user
+            with self.assertRaises(AccessDenied):
+                await self.invoke(path, **{id_key: identifier, owner_key: selected.user})
+            self.guild.fetch_member.assert_awaited_with(8)
+            bot_member = self.interaction(8, manager=True).user
+            bot_member.bot = True
+            self.guild.fetch_member.return_value = bot_member
+            with self.assertRaises(AccessDenied):
+                await self.invoke(path, **{id_key: identifier, owner_key: selected.user})
+            self.guild.fetch_member.reset_mock()
+            with self.assertRaises(AccessDenied):
+                await self.invoke(path, **{id_key: identifier, owner_key: foreign.user})
+            self.guild.fetch_member.assert_not_awaited()
+            for error in (discord.NotFound, discord.Forbidden):
+                self.guild.fetch_member.side_effect = error(
+                    SimpleNamespace(status=404 if error is discord.NotFound else 403, reason="Unavailable"),
+                    "Member unavailable")
+                with self.assertRaises(error):
+                    await self.invoke(path, **{id_key: identifier, owner_key: selected.user})
+            self.guild.fetch_member.side_effect = None
+            self.assertEqual(await self.bot.db.staff_records(1, kind), before)
+            self.assertEqual(await self.bot.db.all("SELECT * FROM audit_log"), audits)
+
+    async def test_edit_input_permissions_and_server_isolation(self):
+        for kind, path, id_key, owner_key, date_key in (
+            ("goal", "development edit", "goal_id", "responsible", "target_date"),
+            ("task", "assistant task edit", "task_id", "owner", "due_date"),
+        ):
+            identifier = await self.bot.db.save_staff_record(
+                2, 7, kind, 7, "Other server", deadline("2026-10-30", "20:00", "UTC"),
+                "UTC", member=42, criteria="Observe five passes")
+            rows = await self.bot.db.all("SELECT * FROM staff_records")
+            audits = await self.bot.db.all("SELECT * FROM audit_log")
+            for values in ({}, {date_key: "2026-11-01"}, {"time": "20:00"},
+                           {"timezone": "UTC"}, {date_key: "bad", "time": "20:00", "timezone": "UTC"},
+                           {date_key: "2026-11-01", "time": "01:30", "timezone": "America/Chicago"}):
+                with self.assertRaises(ValueError):
+                    await self.invoke(path, **{id_key: identifier, **values})
+            self.guild.fetch_member.assert_not_awaited()
+            with self.assertRaisesRegex(ValueError, "this server"):
+                await self.invoke(path, **{id_key: identifier, owner_key: self.staff.user})
+            revoked = self.interaction(7)
+            with self.assertRaises(AccessDenied):
+                await self.invoke(path, revoked, **{id_key: identifier, owner_key: self.staff.user})
+            self.assertEqual(await self.bot.db.all("SELECT * FROM staff_records"), rows)
+            self.assertEqual(await self.bot.db.all("SELECT * FROM audit_log"), audits)
+            self.guild.fetch_member.reset_mock()
 
     async def test_staff_workflow_and_safe_private_output(self):
         common = dict(time="20:00", timezone="America/Chicago")

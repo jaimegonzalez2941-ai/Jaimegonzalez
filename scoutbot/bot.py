@@ -7,6 +7,11 @@ from discord import app_commands
 from discord.ext import commands
 
 from .commands import ScoutCommands
+from .availability_commands import AvailabilityCommands
+from .schedule_commands import ScheduleCommands
+from .attendance_commands import AttendanceCommands, PromotionCommands
+from .club_ui import club_help
+from .branding import apply_branding
 from .config import Settings
 from .database import Database
 from .domain import source_allowed
@@ -42,10 +47,15 @@ class ScoutBot(commands.Bot):
         self.settings = settings
         self.db = Database(settings.database)
 
+    def register_commands(self):
+        for command in (ScoutCommands(self), AvailabilityCommands(self), ScheduleCommands(self),
+                        AttendanceCommands(self), PromotionCommands(self), club_help):
+            self.tree.add_command(command)
+
     async def setup_hook(self):
         await self.db.open()
         self.add_view(DocketView())
-        self.tree.add_command(ScoutCommands(self))
+        self.register_commands()
         if self.settings.test_guild:
             guild = discord.Object(id=self.settings.test_guild)
             self.tree.copy_global_to(guild=guild)
@@ -54,6 +64,7 @@ class ScoutBot(commands.Bot):
         else:
             synced = await self.tree.sync()
             logger.info("Synced %d global command groups.", len(synced))
+        await apply_branding(self)
 
     async def close(self):
         try:
@@ -62,7 +73,14 @@ class ScoutBot(commands.Bot):
             await self.db.close()
 
     async def on_ready(self):
-        logger.info("Scout V2 connected; bot_id=%s server_count=%d", self.user.id, len(self.guilds))
+        logger.info("Club Agent connected; bot_id=%s server_count=%d", self.user.id, len(self.guilds))
+        await self.change_presence(activity=discord.Game(name="/club • Availability, sessions & scouting"))
+        for guild in self.guilds:
+            if guild.me and guild.me.nick and guild.me.nick != "Club Agent":
+                try:
+                    await guild.me.edit(nick="Club Agent", reason="Owner requested Club Agent branding")
+                except discord.HTTPException:
+                    logger.warning("Could not update the bot nickname in server %s.", guild.id)
         permissions = discord.Permissions(
             view_channel=True, send_messages=True, embed_links=True,
             read_message_history=True, manage_roles=True,

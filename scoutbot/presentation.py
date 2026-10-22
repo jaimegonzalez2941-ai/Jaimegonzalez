@@ -13,7 +13,7 @@ def text(value: str, limit: int = 200) -> str:
 
 def embed(title: str, description: str = "", *, color: int = 0x2B8C7F) -> discord.Embed:
     result = discord.Embed(title=title[:256], description=description[:4000], color=color)
-    result.set_footer(text="Scout V2 • Staff only")
+    result.set_footer(text="Club Agent • Staff only")
     return result
 
 

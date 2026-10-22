@@ -12,6 +12,7 @@ import aiosqlite
 from .domain import handle
 from .parser import PlayerStats
 from .rubric import VERSION, validate_payload
+from .club_store import ClubStore, CLUB_SCHEMA
 
 
 def utcnow() -> str:
@@ -76,7 +77,7 @@ CREATE TABLE IF NOT EXISTS evaluation_drafts (
 """
 
 
-class Database:
+class Database(ClubStore):
     def __init__(self, path: Path):
         self.path = path
         self.lock = asyncio.Lock()
@@ -90,6 +91,7 @@ class Database:
         await self.connection.execute("PRAGMA journal_mode=WAL")
         await self.connection.execute("PRAGMA busy_timeout=5000")
         await self.connection.executescript(SCHEMA)
+        await self.connection.executescript(CLUB_SCHEMA)
         # Additive upgrade: never rewrite or recalculate existing single-score records.
         async with self.transaction() as conn:
             async with conn.execute("PRAGMA table_info(evaluations)") as cursor:

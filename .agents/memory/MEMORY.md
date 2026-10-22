@@ -1,1 +1,2 @@
 - [Image-only recap policy](image-only-recaps.md) — leaderboard images are not a trusted source of player stats; require explicit text rows.
+- [Club Agent policy](club-agent-policy.md) — approved branding and tiers; attendance defaults are adjustable, with vacation and availability protections.

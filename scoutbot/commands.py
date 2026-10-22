@@ -106,9 +106,11 @@ class ScoutCommands(app_commands.Group):
         await interaction.followup.send(f"**{stage}** now uses **{ui.text(role.name)}**.", ephemeral=True)
 
     @app_commands.command(description="Add a configured recruitment role to a candidate (does not remove roles)")
+    @app_commands.describe(override_reason="Staff justification if development-tier evidence is insufficient (10–500 characters)")
     @app_commands.choices(role=STAGE_CHOICES)
     @app_commands.checks.cooldown(3, 10, key=lambda i: (i.guild_id, i.user.id))
-    async def assign(self, interaction: discord.Interaction, candidate: discord.Member, role: str):
+    async def assign(self, interaction: discord.Interaction, candidate: discord.Member, role: str,
+                     override_reason: app_commands.Range[str, 10, 500] | None = None):
         if not interaction.user.guild_permissions.manage_roles:
             raise AccessDenied("Assigning roles also requires your Manage Roles permission.")
         if candidate.bot:
@@ -134,11 +136,18 @@ class ScoutCommands(app_commands.Group):
             await interaction.response.send_message("The candidate already has this role.", ephemeral=True)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        await candidate.add_roles(selected, reason=f"Scout V2 assignment by {interaction.user.id}")
+        evidence = await self.bot.db.promotion_evidence(interaction.guild.id, candidate.id)
+        if role != STAGES[0] and not evidence["ready"] and not (override_reason and len(override_reason.strip()) >= 10):
+            raise ValueError(
+                "Promotion evidence is not sufficient: " + " ".join(evidence["reasons"]) +
+                " Review /promotion review. Staff may deliberately override with an override_reason (10–500 characters).")
+        await candidate.add_roles(selected, reason=f"Club Agent assignment by {interaction.user.id}")
         try:
             await self.bot.db.audit(
                 interaction.guild.id, interaction.user.id, "role.assigned",
-                {"candidate": str(candidate.id), "role": str(selected.id), "stage": role},
+                {"candidate": str(candidate.id), "role": str(selected.id), "stage": role,
+                 "promotion_ready": evidence["ready"], "attendance": evidence["attendance"],
+                 "policy": evidence["policy"], "override_reason": override_reason},
             )
         except Exception:
             await interaction.followup.send(
@@ -148,7 +157,10 @@ class ScoutCommands(app_commands.Group):
             raise
         await interaction.followup.send(
             f"Added **{ui.text(selected.name)}** to **{ui.text(candidate.display_name)}**. "
-            "Existing roles were not removed.", ephemeral=True,
+            "Existing roles were not removed. "
+            + ("Staff override was recorded." if role != STAGES[0] and not evidence["ready"] else
+               "Attendance and scouting evidence were recorded in the audit."),
+            ephemeral=True,
         )
 
     @app_commands.command(description="Create or update the restart-safe docket in the private staff channel")
@@ -245,7 +257,7 @@ class ScoutCommands(app_commands.Group):
     async def status(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
         config = await self.bot.db.settings(interaction.guild.id)
-        result = ui.embed("Scout V2 status")
+        result = ui.embed("Club Agent status")
         result.add_field(name="Gateway", value=f"Connected · {self.bot.latency * 1000:.0f} ms")
         result.add_field(name="Recap listening", value="Enabled" if self.bot.settings.recaps_enabled else "Disabled")
         if config:
@@ -276,7 +288,15 @@ class ScoutCommands(app_commands.Group):
 
     @app_commands.command(description="Show the command reference and the supported recap format")
     async def help(self, interaction: discord.Interaction):
-        result = ui.embed("Scouting command reference")
+        result = ui.embed("Club Agent · Scouting command reference")
+        result.add_field(
+            name="Club operations",
+            value="`/club` · Full player/staff guide\n"
+                  "`/availability` · Weekly windows and vacation leave\n"
+                  "`/schedule` · Sessions and commitments\n"
+                  "`/attendance` · Mark or report attendance\n"
+                  "`/promotion` · Evidence review and configurable policy", inline=False,
+        )
         result.add_field(
             name="Scouting",
             value="`/scout evaluate` · Position and scorecard\n"

@@ -16,22 +16,22 @@ async def check(settings: Settings):
     bot = ScoutBot(settings)
     try:
         await bot.db.open()
-        from .commands import ScoutCommands
         from .views import DocketView
-        group = ScoutCommands(bot)
-        bot.tree.add_command(group)
-        group.to_dict(bot.tree)
+        bot.register_commands()
+        commands = bot.tree.get_commands()
+        for command in commands:
+            command.to_dict(bot.tree)
         assert DocketView().is_persistent()
         logging.getLogger(__name__).info(
-            "Startup check passed: database, %d slash commands, persistent docket.",
-            len(group.commands),
+            "Startup check passed: database, %d top-level slash commands/groups, persistent docket.",
+            len(commands),
         )
     finally:
         await bot.db.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="FC Scouting & Performance Bot V2")
+    parser = argparse.ArgumentParser(description="Club Agent — scouting, availability and attendance")
     parser.add_argument("--check", action="store_true", help="Validate startup without connecting to Discord")
     args = parser.parse_args()
     settings = Settings.load()

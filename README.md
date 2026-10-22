@@ -1,16 +1,61 @@
-# FC Scouting & Performance Bot V2
+# Club Agent
 
-A continuously running Discord bot for private player scouting, recruitment roles, and trusted match recaps. The original bot script and any earlier database have not been changed. V2 starts with its own database at `.data/scout-v2.db`.
+A continuously running Discord bot for private player scouting, recruitment, availability, scheduling, attendance, and trusted match recaps. The original bot script and any earlier database have not been changed. Existing V2 records remain at `.data/scout-v2.db`; this update adds tables without replacing the database.
+
+The bot applies the **Club Agent** Discord username and the supplied avatar on startup. The image is bundled locally; a stored image fingerprint prevents unnecessary avatar updates on each restart. A failed Discord identity update is logged without disabling club commands. Existing custom server nicknames are updated where Discord permits.
 
 ## Start the bot
 
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.
 - For full automatic recap reading, open the **Bot** page of this bot's application in the [Discord Developer Portal](https://discord.com/developers/applications) and enable **Message Content Intent**. Grant this bot Message Content Intent as a privileged gateway intent, then restart it. Without this, Discord rejects the bot's gateway connection.
 - Click **Run** for the **Scout Discord Bot** workflow. When it connects, the workflow log prints a bot-invite link. Open that link to add V2 to your server with the requested channel, message, embed, history, and role permissions.
-- `/scout` commands sync globally and may take Discord a little time to appear. Set `DISCORD_TEST_GUILD_ID` before startup to sync to one server immediately while testing.
+- `/club`, `/scout`, `/availability`, `/schedule`, `/attendance`, and `/promotion` sync globally and may take Discord a little time to appear. Set `DISCORD_TEST_GUILD_ID` before startup to sync to one server immediately while testing.
 - In Discord, a server manager runs `/scout setup`: choose a dedicated staff role, a staff-only channel, the channel that receives recaps, and either a trusted bot in your server or the exact numeric ID of a webhook. Setup rejects channels that explicitly allow non-staff viewers.
 - Add recruitment roles to candidates only after a manager maps each stage using `/scout stage_role`. The bot adds the chosen role and deliberately does not remove any existing roles.
 - Scouts map player accounts with `/scout link`. Then use `/scout evaluate`, `/scout history`, `/scout stats`, or `/scout docket`.
+
+## Availability, vacation, and scheduling
+
+Run `/club` for the full command guide. Club-operation responses are private to the caller. Players can view their own availability, leave, and attendance; reviewing other players requires the configured staff role or Manage Server. Session details are visible to server members through slash commands. No new privileged member-list intent is required.
+
+### Player commands
+
+- `/availability set weekday start end timezone` sets one weekly window per weekday, replacing that day's previous window. Use 24-hour `HH:MM` and an IANA timezone such as `America/Chicago` or `Europe/London`. `24:00` is allowed as an end time; split an overnight window across two days. Weekly windows are planning context, not a commitment or scoring penalty.
+- `/availability view` shows your windows; `/availability clear weekday` removes one.
+- `/availability leave start_date end_date timezone` requests vacation or time away, using `YYYY-MM-DD` and an **inclusive last day**. No private reason is requested. Leave is pending until staff approve it.
+- `/availability leaves` shows your request IDs and statuses, ten per page. `/availability cancel_leave leave_id` cancels your request. Only staff can change approved leave that has already started.
+- `/schedule list` shows upcoming/ongoing sessions; use `past:True` for history and `page` for pagination. `/schedule show session_id` shows your RSVP and overlapping leave.
+- `/schedule rsvp session_id response` lets you commit **yes**, respond **maybe**, or decline **no**, until kickoff. A staff assignment cannot be removed by toggling your RSVP; ask staff to release it.
+- `/attendance report` shows your attendance under the current policy window. Optional `days` provides a different reporting window without changing promotion policy.
+
+### Staff commands
+
+- `/availability roster` lists recurring windows. `/availability view member`, `/availability leaves member`, or `/availability leaves all_players:True` supports private staff review. All lists have page options.
+- `/availability review_leave leave_id approved` approves or declines/revokes a request. Changes are audited. Approved leave excludes overlapping sessions from the player's attendance denominator, including already recorded sessions.
+- `/schedule create title kind date time timezone minutes` creates a **training**, **match**, or **trial** session. Duration defaults to 90 minutes (15–720 allowed). Session times display through Discord timestamps in each viewer's local timezone.
+- `/schedule edit` updates an upcoming session. Changing start or end time resets **all RSVPs and assignments to pending**, so old commitments cannot count against a player at a new time. A title-only edit preserves commitments.
+- `/schedule cancel session_id confirm:True` cancels and excludes the session without deleting its records.
+- `/schedule assign session_id member` assigns a player before kickoff; `release:True` releases them to pending. `/schedule roster session_id` shows RSVP, attendance, and approved-leave conflicts.
+- `/attendance mark session_id member status` marks **present**, **late**, **absent**, **excused**, or **unmarked** after kickoff. Repeating it corrects the previous mark, rather than duplicating attendance, and records an audit event. Only players who committed yes or were assigned before kickoff can be marked.
+
+Session creation/editing uses an explicit timezone, rejecting nonexistent or ambiguous daylight-saving times; use UTC to disambiguate. Cancelled sessions cannot receive RSVPs or attendance marks. RSVPs and assignments close at kickoff, and completed sessions cannot be rescheduled.
+
+## Attendance and development-tier promotion
+
+Development tiers remain **Trialist → Academia Prospect → First Team Roster**.
+
+The starting standard is **80% attendance over the last 30 days, at least five marked eligible sessions**, plus a latest saved scouting evaluation of **8.0 or higher within that window**. This is an explainable recommendation for staff, not a prediction or an automatic role assignment.
+
+- Only completed, non-cancelled sessions starting within the rolling window and carrying a yes/assigned commitment are considered.
+- Present and late count as attended; lateness is shown separately.
+- The denominator is **present + late + absent**. Excused absences, approved overlapping leave, and unmarked sessions are excluded. Missing attendance is never automatically marked absent.
+- No eligible sessions means **insufficient evidence**, not 0% attendance. A displayed rounded percentage does not change the actual threshold comparison.
+- Declared weekly availability is not used to lower a scouting score. Pending leave does not exclude a session until staff approve it.
+- `/promotion review member` shows the policy, attendance counts, latest evaluation, current mapped tier, and next tier. With multiple additive tier roles, the highest mapped tier is considered current.
+- `/promotion policy percent days minimum_sessions` lets a server manager adjust requirements for the club's availability. Bounds are 1–100%, 1–365 days, and 1–100 sessions. Existing scores and marks are retained.
+- `/scout assign` still requires staff plus Manage Roles and all existing role safety checks. Initial Trialist placement is allowed without an attendance history. Assigning Academia Prospect or First Team Roster without the evidence minimums requires a deliberate **10–500 character `override_reason`**; evidence, policy, and reason are audited. Staff remain responsible for advancement and role changes. Prior roles are not automatically removed.
+
+These commands do not send scheduled reminders, publish public rosters, track voice-channel presence, or infer attendance automatically. Attendance is a staff-recorded record, not independently verified activity.
 
 ## Trusted recap format
 

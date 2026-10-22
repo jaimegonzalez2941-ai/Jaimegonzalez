@@ -1,6 +1,6 @@
-# FC Scouting & Performance Bot V2
+# Club Agent
 
-An always-on Discord bot for private FC Pro Clubs scouting, recruitment, and match-performance tracking.
+An always-on Discord bot for private FC Pro Clubs scouting, recruitment, availability, schedules, attendance, and match-performance tracking.
 
 ## Run & Operate
 
@@ -46,7 +46,9 @@ An always-on Discord bot for private FC Pro Clubs scouting, recruitment, and mat
 
 ## Product
 
-- Private scorecards, scouting history, staff docket, recruitment roles, EA handle linking, and match statistics.
+- Private scorecards, scouting history, staff docket, recruitment roles, EA handle linking, match statistics, weekly availability, approved leave, schedules, RSVPs, attendance, and promotion evidence.
+- `/club` is the member-facing command guide. `/scout` is retained for backward-compatible staff commands.
+- See README for attendance policy, vacation protections, timezone behavior, role-override rules, and command examples.
 
 ## User preferences
 

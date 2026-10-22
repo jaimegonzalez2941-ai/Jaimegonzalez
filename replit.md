@@ -1,19 +1,26 @@
-# [Project name]
+# FC Scouting & Performance Bot V2
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+An always-on Discord bot for private FC Pro Clubs scouting, recruitment, and match-performance tracking.
 
 ## Run & Operate
 
+- `uv run python -m scoutbot` — start the bot using the configured `Scout Discord Bot` workflow
+- `uv run python -m scoutbot --check` — validate database setup and slash commands without signing in
+- `uv run python -m unittest discover -s tests -v` — run bot unit and persistence tests
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required bot secret: `DISCORD_TOKEN` — Replit Secret; never print or commit its value
+- Automatic recaps require **Message Content Intent** enabled in the Discord Developer Portal
+- Bot database defaults to `.data/scout-v2.db` (ignored by Git); set `SCOUT_DB_PATH` to change it
+- See `README.md` for installation, permissions, setup, and the supported recap format
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
+- Python 3.12, `discord.py`, `aiosqlite`
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
@@ -22,23 +29,30 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `scoutbot/` — bot lifecycle, SQLite repository, Discord commands, parser, and permissions
+- `tests/` — parser, authorization, database, and Discord command contract tests
+- `README.md` — bot installation and server configuration
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Server-scoped slash commands check staff access at runtime; server managers bootstrap with `/scout setup`.
+- Recaps require the configured source and channel; imports are atomic and idempotent.
+- Missing match metrics stay unreported instead of being stored as zero.
+- V2 uses its own SQLite database; it never modifies V1 data.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Private scorecards, scouting history, staff docket, recruitment roles, EA handle linking, and match statistics.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+_No additional preferences recorded._
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Enable Message Content Intent before running V2 with automatic recaps enabled.
+- Confirm the recap source matches `README.md`; unsupported formats are rejected, not guessed.
+- A published bot needs a continuously running VM and durable file storage.
 
 ## Pointers
 

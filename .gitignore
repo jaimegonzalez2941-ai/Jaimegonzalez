@@ -53,3 +53,17 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Python and private bot data
+__pycache__/
+*.py[cod]
+.pythonlibs/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.data/
+*.db
+*.db-wal
+*.db-shm
+.env
+*.log

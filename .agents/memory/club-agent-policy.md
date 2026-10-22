@@ -38,3 +38,10 @@ admin UI with complete optimization" and deferred the player development dashboa
 **How to apply:** Build the public explanation and real private administration together, without
 exposing player development, scouting, or attendance records publicly. The earlier bot-only scope
 does not prohibit this requested companion website.
+
+The user confirmed that members with the Trialist and Dev Squad roles should have access to
+`#staff-reports`.
+
+**Why:** The user explicitly chose to keep their View Channel access after the live audit.
+
+**How to apply:** Preserve these two role grants unless the user changes the intended audience.

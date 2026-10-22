@@ -6,6 +6,6 @@ requires-python = ">=3.12"
 dependencies = [
     "aiosqlite>=0.21,<1",
     "discord-py>=2.6,<3",
-    "pillow>=11,<13",
+    "pillow>=13,<14",
     "pytesseract>=0.3.13,<1",
 ]

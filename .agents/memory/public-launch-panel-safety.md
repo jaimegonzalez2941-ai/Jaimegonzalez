@@ -23,3 +23,12 @@ Restarting the bot synced the command tree; the user confirmed that the command 
 
 **How to apply:** When a command produces `CommandNotFound` after code has registered it, verify
 the live sync state before debugging command logic, channel permissions or panel publication.
+
+Discord can return an unresolved `Object` for a user-specific channel overwrite when that member
+is not cached. It is neither a verified member nor a verified staff principal.
+
+**Why:** `/scout setup` reached the staff-channel privacy check and raised `AttributeError` when an
+uncached overwrite target was treated like a `Member`.
+
+**How to apply:** Handle overwrite targets by known Discord type. Fail closed on unresolved
+viewer grants and tell the manager to remove or verify the stale member override.

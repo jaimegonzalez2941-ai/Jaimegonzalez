@@ -47,28 +47,34 @@ def private_channel(channel: discord.TextChannel, staff_role: discord.Role):
     """Fail closed when explicit overwrites allow a non-staff audience."""
     if channel.overwrites_for(channel.guild.default_role).view_channel is not False:
         raise AccessDenied("The staff channel must explicitly deny View Channel to @everyone.")
+    me = channel.guild.me
+    if me is None:
+        raise AccessDenied("The bot's server membership is unavailable. Try again shortly.")
     for target, overwrite in channel.overwrites.items():
         if overwrite.view_channel is not True:
             continue
-        if isinstance(target, discord.Role):
+        if target.id == me.id:
+            allowed = True
+        elif isinstance(target, discord.Role):
             allowed = (
                 target.id == staff_role.id
                 or target.permissions.administrator or target.permissions.manage_guild
             )
-        else:
+        elif isinstance(target, discord.Member):
             allowed = (
-                target.id == channel.guild.me.id
-                or target.guild_permissions.manage_guild
+                target.guild_permissions.manage_guild
                 or staff_role in target.roles
             )
+        else:
+            # discord.py may represent an uncached former member's overwrite as
+            # discord.Object. Never treat an unknown target as a verified member.
+            allowed = False
         if not allowed:
             raise AccessDenied(
-                "That channel explicitly permits non-staff viewers. "
-                "Remove those View Channel overrides before posting a docket."
+                "That channel explicitly permits a viewer the bot cannot verify as staff. "
+                "Remove View Channel overrides for non-staff users, including former or unresolved "
+                "members, before saving this staff channel."
             )
-    me = channel.guild.me
-    if me is None:
-        raise AccessDenied("The bot's server membership is unavailable. Try again shortly.")
     permissions = channel.permissions_for(me)
     if not all((permissions.view_channel, permissions.send_messages, permissions.embed_links)):
         raise AccessDenied("The bot needs View Channel, Send Messages, and Embed Links in the staff channel.")

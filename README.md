@@ -72,6 +72,15 @@ token, the bot logs that delivery failure without trying to post a public error.
 
 ## Start the bot
 
+For trusted workspace maintenance, `uv run python -m scoutbot --inspect-setup SERVER_ID --as-member MANAGER_ID`
+reads live setup resources using the application's normal bot identity without opening another gateway.
+It verifies the selected manager's current server permissions. The local `--apply-setup JSON` mode
+preflights the staff channel, recap source, and all three existing tier roles before atomically filling
+missing settings. Conflicting saved choices are rejected, and repeated application is idempotent.
+These are local operator tools, not authenticated website endpoints; never expose them directly through
+a public API. They never change Discord permissions or assign roles to players, and require no token
+in their arguments.
+
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.
 - For full automatic recap reading, open the **Bot** page of this bot's application in the [Discord Developer Portal](https://discord.com/developers/applications) and enable **Message Content Intent**. Grant this bot Message Content Intent as a privileged gateway intent, then restart it. Without this, Discord rejects the bot's gateway connection.
 - Click **Run** for the **Scout Discord Bot** workflow. When it connects, the workflow log prints a bot-invite link. Open that link to add V2 to your server with the requested channel, message, embed, history, and role permissions.

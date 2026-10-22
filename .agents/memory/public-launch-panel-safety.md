@@ -62,3 +62,14 @@ unable to identify the rule from a generic error.
 
 **How to apply:** Preserve fail-closed authorization while making private validation messages
 specific enough to act on; never infer a viewer's identity or safety from a role name alone.
+
+When diagnosing source setup, verify the live account and current per-match report destination rather
+than treating a historical bot display name or leaderboard link as authoritative.
+
+**Why:** A bot shown under an older name in screenshots had since been renamed; its current match
+reports and its leaderboard also appeared in different channels. An unresolved permission label was
+not evidence that the account lacked manager access.
+
+**How to apply:** Use verified account IDs and a small bounded sample of actual report metadata.
+Check current permissions before recommending removal of any viewer grant; do not guess the source
+channel from the location of a leaderboard.

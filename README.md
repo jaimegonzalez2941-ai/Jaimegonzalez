@@ -4,19 +4,35 @@ A continuously running Discord bot for private player scouting, recruitment, ava
 
 The bot applies the **Club Agent** Discord username and the supplied avatar on startup. The image is bundled locally; a stored image fingerprint prevents unnecessary avatar updates on each restart. A failed Discord identity update is logged without disabling club commands. Existing custom server nicknames are updated where Discord permits.
 
+## Start here in Discord
+
+**Type `/club` first.** It opens a private Start Here menu, not a wall of commands. Choose a workflow and use **Next step**, **Back**, or **Home**:
+
+- **Player:** set weekly availability → find a session and RSVP → request vacation/time away when needed → check attendance.
+- **Training and match** (staff): plan a session → check commitments → handle changes → record checked attendance after kickoff.
+- **Scouting and development** (staff): observe and evaluate → read saved evidence → track recruitment → set a goal → review promotion.
+- **Staff workspace:** read the briefing → assign accountable staff tasks → follow up with player records.
+- **Manager setup:** check saved setup and cached resources → map development-tier roles → review the attendance standard → decide on optional reminders → move into daily work.
+
+Each screen shows a next command and short guidance. Type that command separately in Discord to perform the action; browsing the guide itself never changes settings, RSVPs, attendance, tasks, scores or roles. Existing slash commands still work directly.
+
+Only routes you can currently access are shown. Every continuation checks the original viewer and server; staff and manager access is checked again before restricted guidance is shown. **Command reference** remains in the menu for categorized lookups, and staff can still use `/scout help`. The menu expires after ten minutes or a bot restart; run `/club` again to reopen it.
+
+The manager checklist reads current settings and checks cached role/channel existence. A saved setting or a found resource is **not proof** of channel privacy, current permissions, trusted-source authenticity, gateway intents or successful recap/notification delivery. Follow the suggested setup/status commands for those checks. Reminders are optional and never a prerequisite to starting.
+
 ## Start the bot
 
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.
 - For full automatic recap reading, open the **Bot** page of this bot's application in the [Discord Developer Portal](https://discord.com/developers/applications) and enable **Message Content Intent**. Grant this bot Message Content Intent as a privileged gateway intent, then restart it. Without this, Discord rejects the bot's gateway connection.
 - Click **Run** for the **Scout Discord Bot** workflow. When it connects, the workflow log prints a bot-invite link. Open that link to add V2 to your server with the requested channel, message, embed, history, and role permissions.
-- `/club`, `/scout`, `/availability`, `/schedule`, `/attendance`, and `/promotion` sync globally and may take Discord a little time to appear. Set `DISCORD_TEST_GUILD_ID` before startup to sync to one server immediately while testing.
-- In Discord, a server manager runs `/scout setup`: choose a dedicated staff role, a staff-only channel, the channel that receives recaps, and either a trusted bot in your server or the exact numeric ID of a webhook. Setup rejects channels that explicitly allow non-staff viewers.
+- `/club`, `/scout`, `/availability`, `/schedule`, `/attendance`, `/promotion`, `/assistant`, and `/development` sync globally and may take Discord a little time to appear. Set `DISCORD_TEST_GUILD_ID` before startup to sync to one server immediately while testing.
+- In Discord, start with `/club`. A server manager chooses **Manager setup**, then uses `/scout setup`: choose a dedicated staff role, a staff-only channel, the channel that receives recaps, and either a trusted bot in your server or the exact numeric ID of a webhook. Setup rejects channels that explicitly allow non-staff viewers.
 - Add recruitment roles to candidates only after a manager maps each stage using `/scout stage_role`. The bot adds the chosen role and deliberately does not remove any existing roles.
 - Scouts map player accounts with `/scout link`. Then use `/scout evaluate`, `/scout history`, `/scout stats`, or `/scout docket`.
 
 ## Availability, vacation, and scheduling
 
-Run `/club` for the full command guide. Club-operation responses are private to the caller. Players can view their own availability, leave, and attendance; reviewing other players requires the configured staff role or Manage Server. Session details are visible to server members through slash commands. No new privileged member-list intent is required.
+Run `/club` for guided steps or its categorized **Command reference**. Club-operation responses are private to the caller. Players can view their own availability, leave, and attendance; reviewing other players requires the configured staff role or Manage Server. Session details are visible to server members through slash commands. No new privileged member-list intent is required.
 
 ### Player commands
 

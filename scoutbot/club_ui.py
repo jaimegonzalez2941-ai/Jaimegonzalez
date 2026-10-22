@@ -72,40 +72,10 @@ def promotion_text(evidence):
                "Performance and attendance meet the configured minimums; this is not automatic promotion."))
 
 
-@app_commands.command(name="club", description="Club Agent command guide for players and staff")
+@app_commands.command(name="club", description="Start here: guided workflows for players, staff and managers")
 @app_commands.guild_only()
 async def club_help(interaction: discord.Interaction):
     member_access(interaction)
-    await interaction.response.send_message(embed=card(
-        "Club Agent",
-        "**Players**\n"
-        "`/availability set` · Weekly availability, using your timezone\n"
-        "`/availability view` · Your weekly windows\n"
-        "`/availability clear` · Remove a weekday\n"
-        "`/availability leave` · Request vacation/time away\n"
-        "`/availability leaves` · Check approval status\n"
-        "`/availability cancel_leave` · Cancel your leave\n"
-        "`/schedule list` · Upcoming or past sessions\n"
-        "`/schedule show` · Session details and your RSVP\n"
-        "`/schedule rsvp` · Yes / maybe / no before kickoff\n"
-        "`/attendance report` · Your attendance\n\n"
-        "**Staff**\n"
-        "`/schedule create`, `edit`, `cancel`, `assign`, `roster`, `notifications`\n"
-        "`/availability roster`, `review_leave`\n"
-        "`/attendance mark` · Present / late / absent / excused / unmarked\n"
-        "`/promotion review` · Combined performance and attendance\n"
-        "`/promotion policy` · Managers adjust attendance rules\n"
-        "`/scout help` · Scouting, evaluations and recruitment roles\n\n"
-        "`/scout player` · Unified private dossier; saved evidence only, no drafts\n"
-        "`/scout compare` · Latest position evidence; no overall winner\n"
-        "`/scout shortlist add`, `list`, `remove` · Recruitment follow-ups\n"
-        "`/development goal`, `review`, `complete` · Observable goals and outcome notes\n"
-        "`/assistant task add`, `list`, `complete` · Staff-owned action tracking\n"
-        "`/assistant brief` · On-demand seven-day facts and suggested actions\n"
-        "Workspace commands and pagination require current staff/manager access. Lists are private; "
-        "deadlines use explicit IANA timezones and Discord-localized output. Review dates are not automatic "
-        "player decisions; completion changes no scores or roles. Human ratings, declared coverage and "
-        "trusted-source metric sample sizes stay separate.\n\n"
-        "Approved leave and excused absences do not reduce attendance. "
-        "Declaring limited weekly availability alone never reduces a scouting score."
-    ), ephemeral=True)
+    # Imported here to keep shared club helpers usable by the navigation module.
+    from .start_guide import send_start
+    await send_start(interaction)

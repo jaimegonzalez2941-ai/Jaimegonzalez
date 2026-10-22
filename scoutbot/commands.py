@@ -315,7 +315,7 @@ class ScoutCommands(app_commands.Group):
         result = ui.embed("Club Agent · Scouting command reference")
         result.add_field(
             name="Club operations",
-            value="`/club` · Full player/staff guide\n"
+            value="`/club` · Start Here: guided workflows and categorized command reference\n"
                   "`/availability` · Weekly windows and vacation leave\n"
                   "`/schedule` · Sessions and commitments\n"
                   "`/attendance` · Mark or report attendance\n"

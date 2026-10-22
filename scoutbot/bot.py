@@ -89,7 +89,7 @@ class ScoutBot(commands.Bot):
 
     async def on_ready(self):
         logger.info("Club Agent connected; bot_id=%s server_count=%d", self.user.id, len(self.guilds))
-        await self.change_presence(activity=discord.Game(name="/club • Availability, sessions & scouting"))
+        await self.change_presence(activity=discord.Game(name="/club • Start Here"))
         for guild in self.guilds:
             if guild.me and guild.me.nick and guild.me.nick != "Club Agent":
                 try:

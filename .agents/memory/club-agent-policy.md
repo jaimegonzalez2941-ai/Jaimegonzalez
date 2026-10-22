@@ -1,6 +1,6 @@
 ---
 name: Club Agent development policy
-description: User-approved branding, development tiers, and adjustable attendance rules with vacation protection.
+description: User-approved branding, development tiers, flexible attendance, and workflow-first guidance.
 ---
 
 The user named the bot **Club Agent** and supplied its image. Development tiers are **Trialist → Academia Prospect → First Team Roster**.
@@ -14,3 +14,9 @@ The user accepted **80% over 30 days with at least five sessions for now**, but 
 **Why:** The user wants to keep up with attendance without disadvantaging players for legitimate time away or varying availability.
 
 **How to apply:** Keep the standard adjustable, preserve approved leave/excused-absence protections, and distinguish unmarked attendance from no-shows.
+
+The user wants a "start here" workflow so people know where to go, rather than confronting a large command list.
+
+**Why:** The user found the number of commands overwhelming.
+
+**How to apply:** Introduce features through concise, role-appropriate next-action guidance; keep detailed command lists as a reference rather than the main onboarding experience.

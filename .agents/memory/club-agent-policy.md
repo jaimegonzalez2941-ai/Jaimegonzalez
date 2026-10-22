@@ -39,9 +39,11 @@ admin UI with complete optimization" and deferred the player development dashboa
 exposing player development, scouting, or attendance records publicly. The earlier bot-only scope
 does not prohibit this requested companion website.
 
-The user confirmed that members with the Trialist and Dev Squad roles should have access to
-`#staff-reports`.
+The user corrected their earlier response: members with the Trialist and Dev Squad roles should
+not have access to `#staff-reports`.
 
-**Why:** The user explicitly chose to keep their View Channel access after the live audit.
+**Why:** The user clarified that they meant staff reports and that these player-tier roles should
+not retain access.
 
-**How to apply:** Preserve these two role grants unless the user changes the intended audience.
+**How to apply:** Keep these two roles' direct View Channel grants removed unless the user changes
+the intended audience.

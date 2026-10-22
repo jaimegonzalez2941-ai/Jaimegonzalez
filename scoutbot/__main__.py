@@ -41,6 +41,8 @@ def main():
                         help="Read-only live setup report; does not connect a gateway")
     modes.add_argument("--audit-permissions", type=int, metavar="SERVER_ID",
                         help="Read-only inventory of server roles, hierarchy, and channel overwrites")
+    modes.add_argument("--remove-report-tier-access", type=int, metavar="SERVER_ID",
+                        help="Remove only Trialist and Dev Squad View Channel grants from #staff-reports")
     parser.add_argument("--as-member", type=int, metavar="MEMBER_ID",
                         help="Verify this requesting server manager before an operator report")
     modes.add_argument("--apply-setup", metavar="JSON",
@@ -69,6 +71,17 @@ def main():
             parser.error("--audit-permissions requires --as-member")
         from .permission_audit import print_permission_audit
         asyncio.run(print_permission_audit(token, settings, args.audit_permissions, args.as_member))
+        return
+    if args.remove_report_tier_access is not None:
+        if not args.as_member:
+            parser.error("--remove-report-tier-access requires --as-member")
+        from .permission_audit import print_report_tier_access_change
+        try:
+            asyncio.run(print_report_tier_access_change(
+                token, args.remove_report_tier_access, args.as_member
+            ))
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
         return
     if args.apply_setup:
         from .setup_operator import apply_setup

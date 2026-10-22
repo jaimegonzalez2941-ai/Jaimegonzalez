@@ -78,14 +78,19 @@ It verifies the selected manager's current server permissions. The local `--appl
 preflights the staff channel, recap source, and all three existing tier roles before atomically filling
 missing settings. Conflicting saved choices are rejected, and repeated application is idempotent.
 These are local operator tools, not authenticated website endpoints; never expose them directly through
-a public API. They never change Discord permissions or assign roles to players, and require no token
-in their arguments.
+a public API. They require no token in their arguments.
 
 `uv run python -m scoutbot --audit-permissions SERVER_ID --as-member MANAGER_ID` performs a
 read-only inventory of every live server role permission and explicit channel override, checks
 saved tier roles and the bot's configured staff/recap access, and verifies that the requesting
 human manager currently has Manage Server. It does not enumerate guild members, read chat messages
 or edit Discord permissions. Review audit findings before making any server changes.
+
+`uv run python -m scoutbot --remove-report-tier-access SERVER_ID --as-member MANAGER_ID` is a
+separate, manager-verified repair. It removes only the `View Channel` grants for the exact
+`⏳ Trialist` and `⚽ Dev Squad` roles in `#staff-reports`, after confirming `@everyone` is denied
+and the channel has no category parent. It preserves other permission bits and channel overrides,
+deletes no posts, and verifies each change. This is a trusted-workspace operation, not a public API.
 
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.
 - For full automatic recap reading, open the **Bot** page of this bot's application in the [Discord Developer Portal](https://discord.com/developers/applications) and enable **Message Content Intent**. Grant this bot Message Content Intent as a privileged gateway intent, then restart it. Without this, Discord rejects the bot's gateway connection.

@@ -1,4 +1,4 @@
-"""Read-only Discord role and channel permission audit."""
+"""Discord permission audit and narrowly scoped, manager-approved repairs."""
 
 import sqlite3
 
@@ -65,6 +65,115 @@ def summarize_overwrites(channel):
             "denies": true_permissions(denied),
         })
     return summaries
+
+
+def without_view_channel(overwrite):
+    updated = discord.PermissionOverwrite.from_pair(*overwrite.pair())
+    updated.view_channel = None
+    return updated
+
+
+def other_overwrite_bits_unchanged(before, after):
+    view_channel_mask = discord.Permissions.VALID_FLAGS["view_channel"]
+    before_allow, before_deny = before.pair()
+    after_allow, after_deny = after.pair()
+    return (
+        (before_allow.value & ~view_channel_mask) == (after_allow.value & ~view_channel_mask)
+        and (before_deny.value & ~view_channel_mask) == (after_deny.value & ~view_channel_mask)
+    )
+
+
+async def remove_report_tier_access(token, guild_id, actor_id):
+    """Remove only two approved tier-role View Channel grants from #staff-reports."""
+    tier_role_names = ("⏳ Trialist", "⚽ Dev Squad")
+    reason = "Manager-approved: remove development-tier access to staff reports"
+    async with discord.Client(intents=discord.Intents.none()) as client:
+        await client.login(token)
+        guild = await client.fetch_guild(guild_id)
+        actor = await guild.fetch_member(actor_id)
+        if actor.bot or not actor.guild_permissions.manage_guild:
+            raise ValueError("The requesting member must currently be a human server manager.")
+
+        channels = await guild.fetch_channels()
+        matches = [
+            channel for channel in channels
+            if isinstance(channel, discord.TextChannel) and channel.name.casefold() == "staff-reports"
+        ]
+        if len(matches) != 1:
+            raise ValueError("Expected exactly one text channel named #staff-reports; no permissions were changed.")
+        channel = matches[0]
+        if channel.category is not None:
+            raise ValueError("#staff-reports now inherits category permissions; no permissions were changed.")
+        if channel.overwrites_for(guild.default_role).view_channel is not False:
+            raise ValueError("#staff-reports no longer explicitly denies @everyone; no permissions were changed.")
+
+        roles_by_name = {}
+        for role_name in tier_role_names:
+            role_matches = [role for role in guild.roles if role.name == role_name]
+            if len(role_matches) != 1:
+                raise ValueError(
+                    f"Expected exactly one server role named {role_name}; no permissions were changed."
+                )
+            roles_by_name[role_name] = role_matches[0]
+
+        results = []
+        for role_name, role in roles_by_name.items():
+            before = channel.overwrites_for(role)
+            if before.view_channel is not True:
+                results.append({
+                    "role": role_name,
+                    "status": "already restricted" if before.view_channel is False else "no direct grant",
+                    "view_channel": "deny" if before.view_channel is False else "inherit",
+                    "other_permissions_preserved": True,
+                })
+                continue
+
+            try:
+                await channel.set_permissions(role, overwrite=without_view_channel(before), reason=reason)
+            except discord.HTTPException:
+                # A failed response may follow a successful write. Read live state before deciding.
+                pass
+
+            try:
+                refreshed = await client.fetch_channel(channel.id)
+            except discord.HTTPException:
+                results.append({
+                    "role": role_name,
+                    "status": "unverified; check this role's overwrite in Discord before retrying",
+                    "view_channel": "unknown",
+                    "other_permissions_preserved": False,
+                })
+                break
+
+            after = refreshed.overwrites_for(role)
+            preserved = other_overwrite_bits_unchanged(before, after)
+            if after.view_channel is None and preserved:
+                results.append({
+                    "role": role_name,
+                    "status": "removed and verified",
+                    "view_channel": "inherit",
+                    "other_permissions_preserved": True,
+                })
+            else:
+                results.append({
+                    "role": role_name,
+                    "status": "not fully verified; inspect before retrying",
+                    "view_channel": "allow" if after.view_channel is True else "deny",
+                    "other_permissions_preserved": preserved,
+                })
+                break
+
+        changed_or_verified = all(
+            result["status"] in ("removed and verified", "already restricted", "no direct grant")
+            for result in results
+        )
+        return {
+            "channel": channel.name,
+            "status": "complete" if changed_or_verified and len(results) == len(tier_role_names) else "partial or unverified",
+            "results": results,
+            "other_channel_overrides_changed": False,
+            "posts_deleted": False,
+        }
 
 
 async def audit_permissions(token, settings, guild_id, actor_id):
@@ -232,3 +341,9 @@ async def print_permission_audit(token, settings, guild_id, actor_id):
     import json
     report = await audit_permissions(token, settings, guild_id, actor_id)
     print(json.dumps({"READ_ONLY_AUDIT": report}, ensure_ascii=False))
+
+
+async def print_report_tier_access_change(token, guild_id, actor_id):
+    import json
+    report = await remove_report_tier_access(token, guild_id, actor_id)
+    print(json.dumps({"REPORT_ACCESS_CHANGE": report}, ensure_ascii=False))

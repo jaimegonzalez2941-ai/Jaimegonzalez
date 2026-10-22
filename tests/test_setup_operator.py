@@ -7,7 +7,12 @@ import discord
 
 from scoutbot.database import Database
 from scoutbot.domain import STAGES
-from scoutbot.permission_audit import summarize_overwrites, true_permissions
+from scoutbot.permission_audit import (
+    other_overwrite_bits_unchanged,
+    summarize_overwrites,
+    true_permissions,
+    without_view_channel,
+)
 from scoutbot.setup_operator import persist_setup, validate_manifest
 
 
@@ -91,3 +96,17 @@ class SetupOperatorTests(unittest.IsolatedAsyncioTestCase):
         perms.manage_guild = True
         perms.view_audit_log = True
         self.assertEqual(true_permissions(perms), ["manage_guild", "view_audit_log"])
+
+    def test_removing_view_grant_preserves_every_other_role_overwrite_bit(self):
+        before = discord.PermissionOverwrite(
+            view_channel=True, send_messages=True, manage_messages=False, read_message_history=True
+        )
+        after = without_view_channel(before)
+        self.assertIs(before.view_channel, True)
+        self.assertIsNone(after.view_channel)
+        self.assertTrue(after.send_messages)
+        self.assertTrue(after.read_message_history)
+        self.assertFalse(other_overwrite_bits_unchanged(
+            before, discord.PermissionOverwrite(view_channel=None, send_messages=False)
+        ))
+        self.assertTrue(other_overwrite_bits_unchanged(before, after))

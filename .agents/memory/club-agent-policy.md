@@ -40,10 +40,10 @@ exposing player development, scouting, or attendance records publicly. The earli
 does not prohibit this requested companion website.
 
 The user corrected their earlier response: members with the Trialist and Dev Squad roles should
-not have access to `#staff-reports`.
+not have access to `#staff-reports`, including through personal View Channel overrides.
 
 **Why:** The user clarified that they meant staff reports and that these player-tier roles should
 not retain access.
 
-**How to apply:** Keep these two roles' direct View Channel grants removed unless the user changes
-the intended audience.
+**How to apply:** Keep these two roles' direct View Channel grants removed and do not retain
+personal View Channel grants for members who hold either role unless the user changes the policy.

@@ -8,7 +8,9 @@ import discord
 from scoutbot.database import Database
 from scoutbot.domain import STAGES
 from scoutbot.permission_audit import (
+    member_tier_overlap,
     other_overwrite_bits_unchanged,
+    require_exact_overlap_names,
     summarize_overwrites,
     true_permissions,
     without_view_channel,
@@ -110,3 +112,21 @@ class SetupOperatorTests(unittest.IsolatedAsyncioTestCase):
             before, discord.PermissionOverwrite(view_channel=None, send_messages=False)
         ))
         self.assertTrue(other_overwrite_bits_unchanged(before, after))
+
+    def test_member_tier_overlap_uses_only_current_role_ids(self):
+        trialist = SimpleNamespace(id=10, name="⏳ Trialist")
+        dev_squad = SimpleNamespace(id=11, name="⚽ Dev Squad")
+        unrelated = SimpleNamespace(id=12, name="Server Booster")
+        member = SimpleNamespace(roles=[trialist, unrelated, dev_squad])
+        self.assertEqual(
+            member_tier_overlap(member, [trialist, dev_squad]),
+            ["⏳ Trialist", "⚽ Dev Squad"],
+        )
+
+    def test_individual_override_update_requires_the_exact_approved_accounts(self):
+        approved = ["Rocha", "zERoo"]
+        require_exact_overlap_names(["zERoo", "Rocha"], approved)
+        with self.assertRaisesRegex(ValueError, "no grants were changed"):
+            require_exact_overlap_names(["Rocha", "Another member"], approved)
+        with self.assertRaisesRegex(ValueError, "no grants were changed"):
+            require_exact_overlap_names(["Rocha", "Rocha"], approved)

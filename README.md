@@ -92,6 +92,16 @@ separate, manager-verified repair. It removes only the `View Channel` grants for
 and the channel has no category parent. It preserves other permission bits and channel overrides,
 deletes no posts, and verifies each change. This is a trusted-workspace operation, not a public API.
 
+`uv run python -m scoutbot --audit-report-member-overlaps SERVER_ID --as-member MANAGER_ID` checks
+only current accounts explicitly granted channel access in `#staff-reports` against their
+Trialist/Dev Squad roles. It fetches those referenced accounts individually, does not enumerate
+members, and makes no permission changes.
+
+`--remove-report-member-overlaps SERVER_ID --as-member MANAGER_ID --approved-member-name NAME`
+removes personal View Channel grants only when the live explicit viewers and tier memberships still
+match every approved name. Run it once per approved name. It preserves other permissions and
+checks whether another role still grants access.
+
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.
 - For full automatic recap reading, open the **Bot** page of this bot's application in the [Discord Developer Portal](https://discord.com/developers/applications) and enable **Message Content Intent**. Grant this bot Message Content Intent as a privileged gateway intent, then restart it. Without this, Discord rejects the bot's gateway connection.
 - Click **Run** for the **Scout Discord Bot** workflow. When it connects, the workflow log prints a bot-invite link. Open that link to add V2 to your server with the requested channel, message, embed, history, and role permissions.

@@ -43,8 +43,14 @@ def main():
                         help="Read-only inventory of server roles, hierarchy, and channel overwrites")
     modes.add_argument("--remove-report-tier-access", type=int, metavar="SERVER_ID",
                         help="Remove only Trialist and Dev Squad View Channel grants from #staff-reports")
+    modes.add_argument("--audit-report-member-overlaps", type=int, metavar="SERVER_ID",
+                        help="Read explicit #staff-reports viewers and check for Trialist/Dev Squad overlap")
+    modes.add_argument("--remove-report-member-overlaps", type=int, metavar="SERVER_ID",
+                        help="Remove individual #staff-reports grants for approved tier members")
     parser.add_argument("--as-member", type=int, metavar="MEMBER_ID",
                         help="Verify this requesting server manager before an operator report")
+    parser.add_argument("--approved-member-name", action="append", default=[],
+                        help=argparse.SUPPRESS)
     modes.add_argument("--apply-setup", metavar="JSON",
                         help="Trusted-workspace maintenance: validate and save a complete setup manifest")
     args = parser.parse_args()
@@ -79,6 +85,33 @@ def main():
         try:
             asyncio.run(print_report_tier_access_change(
                 token, args.remove_report_tier_access, args.as_member
+            ))
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
+        return
+    if args.audit_report_member_overlaps is not None:
+        if not args.as_member:
+            parser.error("--audit-report-member-overlaps requires --as-member")
+        from .permission_audit import print_report_member_overlap_audit
+        try:
+            asyncio.run(print_report_member_overlap_audit(
+                token, args.audit_report_member_overlaps, args.as_member
+            ))
+        except ValueError as error:
+            raise SystemExit(str(error)) from None
+        return
+    if args.remove_report_member_overlaps is not None:
+        if not args.as_member:
+            parser.error("--remove-report-member-overlaps requires --as-member")
+        if not args.approved_member_name:
+            parser.error("--remove-report-member-overlaps requires --approved-member-name")
+        from .permission_audit import print_report_member_access_change
+        try:
+            asyncio.run(print_report_member_access_change(
+                token,
+                args.remove_report_member_overlaps,
+                args.as_member,
+                args.approved_member_name,
             ))
         except ValueError as error:
             raise SystemExit(str(error)) from None

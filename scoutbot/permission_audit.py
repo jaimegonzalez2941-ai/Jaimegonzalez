@@ -83,6 +83,228 @@ def other_overwrite_bits_unchanged(before, after):
     )
 
 
+def member_tier_overlap(member, tier_roles):
+    tier_ids = {role.id for role in tier_roles}
+    return sorted({role.name for role in member.roles if role.id in tier_ids})
+
+
+def require_exact_overlap_names(found_names, expected_names):
+    if (
+        len(expected_names) != len(set(expected_names))
+        or len(found_names) != len(expected_names)
+        or set(found_names) != set(expected_names)
+    ):
+        raise ValueError("The current individual access list differs from the approved accounts; no grants were changed.")
+
+
+async def audit_report_member_overlaps(token, guild_id, actor_id):
+    """Read only explicit #staff-reports member viewers and check their current tier roles."""
+    tier_role_names = ("⏳ Trialist", "⚽ Dev Squad")
+    async with discord.Client(intents=discord.Intents.none()) as client:
+        await client.login(token)
+        guild = await client.fetch_guild(guild_id)
+        actor = await guild.fetch_member(actor_id)
+        if actor.bot or not actor.guild_permissions.manage_guild:
+            raise ValueError("The requesting member must currently be a human server manager.")
+
+        channels = await guild.fetch_channels()
+        matches = [
+            channel for channel in channels
+            if isinstance(channel, discord.TextChannel) and channel.name.casefold() == "staff-reports"
+        ]
+        if len(matches) != 1:
+            raise ValueError("Expected exactly one text channel named #staff-reports.")
+        channel = matches[0]
+        roles_by_name = {}
+        for role_name in tier_role_names:
+            role_matches = [role for role in guild.roles if role.name == role_name]
+            if len(role_matches) != 1:
+                raise ValueError(f"Expected exactly one server role named {role_name}.")
+            roles_by_name[role_name] = role_matches[0]
+
+        tier_roles = list(roles_by_name.values())
+        report = {
+            "channel": channel.name,
+            "member_roster_enumerated": False,
+            "role_overrides": {
+                name: (
+                    "allow" if channel.overwrites_for(role).view_channel is True else
+                    "deny" if channel.overwrites_for(role).view_channel is False else "inherit"
+                )
+                for name, role in roles_by_name.items()
+            },
+            "explicit_member_view_grants_checked": 0,
+            "verified_member_overrides": 0,
+            "unverified_member_overrides": 0,
+            "former_or_missing_members": 0,
+            "tier_role_overlaps": [],
+        }
+
+        seen_ids = set()
+        member_ids = []
+        for target, overwrite in channel.overwrites.items():
+            if overwrite.view_channel is not True:
+                continue
+            if isinstance(target, discord.Member):
+                member_id = target.id
+            elif isinstance(target, discord.Object) and target.type is not discord.Role:
+                member_id = target.id
+            else:
+                continue
+            if member_id not in seen_ids:
+                seen_ids.add(member_id)
+                member_ids.append(member_id)
+
+        report["explicit_member_view_grants_checked"] = len(member_ids)
+        for member_id in member_ids:
+            try:
+                member = await guild.fetch_member(member_id)
+            except discord.NotFound:
+                report["former_or_missing_members"] += 1
+                continue
+            except discord.HTTPException:
+                report["unverified_member_overrides"] += 1
+                continue
+
+            report["verified_member_overrides"] += 1
+            overlap = member_tier_overlap(member, tier_roles)
+            if overlap:
+                report["tier_role_overlaps"].append({
+                    "name": member.display_name,
+                    "tier_roles": overlap,
+                    "effective_view_channel": bool(channel.permissions_for(member).view_channel),
+                })
+
+        if report["tier_role_overlaps"]:
+            report["summary"] = "One or more explicit member viewers also have a restricted tier role."
+        elif report["unverified_member_overrides"]:
+            report["summary"] = "No overlap found among verified members; some explicit viewers could not be checked."
+        else:
+            report["summary"] = "No verified explicit member viewer has either tier role."
+        return report
+
+
+async def remove_report_member_overlaps(token, guild_id, actor_id, expected_names):
+    """Remove approved individual grants only when live names and tier membership still match."""
+    if not expected_names or len(expected_names) != len(set(expected_names)):
+        raise ValueError("Approved member names must be a non-empty unique list.")
+    reason = "Manager-approved: remove individual access for restricted development-tier members"
+    async with discord.Client(intents=discord.Intents.none()) as client:
+        await client.login(token)
+        guild = await client.fetch_guild(guild_id)
+        actor = await guild.fetch_member(actor_id)
+        if actor.bot or not actor.guild_permissions.manage_guild:
+            raise ValueError("The requesting member must currently be a human server manager.")
+
+        channels = await guild.fetch_channels()
+        matches = [
+            channel for channel in channels
+            if isinstance(channel, discord.TextChannel) and channel.name.casefold() == "staff-reports"
+        ]
+        if len(matches) != 1:
+            raise ValueError("Expected exactly one text channel named #staff-reports; no permissions were changed.")
+        channel = matches[0]
+        if channel.category is not None:
+            raise ValueError("#staff-reports now inherits category permissions; no permissions were changed.")
+        if channel.overwrites_for(guild.default_role).view_channel is not False:
+            raise ValueError("#staff-reports no longer explicitly denies @everyone; no permissions were changed.")
+
+        tier_role_names = ("⏳ Trialist", "⚽ Dev Squad")
+        tier_roles = []
+        for role_name in tier_role_names:
+            role_matches = [role for role in guild.roles if role.name == role_name]
+            if len(role_matches) != 1:
+                raise ValueError(f"Expected exactly one server role named {role_name}; no permissions were changed.")
+            tier_roles.append(role_matches[0])
+
+        direct_member_ids = []
+        for target, overwrite in channel.overwrites.items():
+            if overwrite.view_channel is not True:
+                continue
+            if isinstance(target, discord.Member):
+                direct_member_ids.append(target.id)
+            elif isinstance(target, discord.Object) and target.type is not discord.Role:
+                direct_member_ids.append(target.id)
+
+        overlaps = []
+        seen_ids = set()
+        for member_id in direct_member_ids:
+            if member_id in seen_ids:
+                continue
+            seen_ids.add(member_id)
+            try:
+                member = await guild.fetch_member(member_id)
+            except discord.NotFound:
+                continue
+            except discord.HTTPException:
+                raise ValueError("Could not verify every explicit member viewer; no grants were changed.") from None
+            if member_tier_overlap(member, tier_roles):
+                overlaps.append(member)
+
+        require_exact_overlap_names(
+            [member.display_name for member in overlaps],
+            expected_names,
+        )
+        for member in overlaps:
+            if channel.overwrites_for(member).view_channel is not True:
+                raise ValueError("An approved member no longer has an explicit allow; no grants were changed.")
+
+        results = []
+        for member in overlaps:
+            before = channel.overwrites_for(member)
+            try:
+                await channel.set_permissions(
+                    member,
+                    overwrite=without_view_channel(before),
+                    reason=reason,
+                )
+            except discord.HTTPException:
+                # Verify live state before treating an API error as a failed or successful write.
+                pass
+
+            try:
+                refreshed = await client.fetch_channel(channel.id)
+                current_member = await guild.fetch_member(member.id)
+            except discord.HTTPException:
+                results.append({
+                    "name": member.display_name,
+                    "status": "unverified; check the individual overwrite before retrying",
+                    "effective_view_channel": "unknown",
+                    "other_permissions_preserved": False,
+                })
+                break
+
+            after = refreshed.overwrites_for(current_member)
+            preserved = other_overwrite_bits_unchanged(before, after)
+            if after.view_channel is None and preserved:
+                still_can_view = bool(refreshed.permissions_for(current_member).view_channel)
+                results.append({
+                    "name": current_member.display_name,
+                    "status": "personal grant removed and verified",
+                    "effective_view_channel": still_can_view,
+                    "other_permissions_preserved": True,
+                })
+            else:
+                results.append({
+                    "name": current_member.display_name,
+                    "status": "not fully verified; inspect before retrying",
+                    "effective_view_channel": bool(refreshed.permissions_for(current_member).view_channel),
+                    "other_permissions_preserved": preserved,
+                })
+                break
+
+        complete = len(results) == len(overlaps) and all(
+            item["status"] == "personal grant removed and verified" for item in results
+        )
+        return {
+            "channel": channel.name,
+            "status": "complete" if complete else "partial or unverified",
+            "results": results,
+            "other_channel_overrides_changed": False,
+            "posts_deleted": False,
+        }
+
+
 async def remove_report_tier_access(token, guild_id, actor_id):
     """Remove only two approved tier-role View Channel grants from #staff-reports."""
     tier_role_names = ("⏳ Trialist", "⚽ Dev Squad")
@@ -347,3 +569,15 @@ async def print_report_tier_access_change(token, guild_id, actor_id):
     import json
     report = await remove_report_tier_access(token, guild_id, actor_id)
     print(json.dumps({"REPORT_ACCESS_CHANGE": report}, ensure_ascii=False))
+
+
+async def print_report_member_overlap_audit(token, guild_id, actor_id):
+    import json
+    report = await audit_report_member_overlaps(token, guild_id, actor_id)
+    print(json.dumps({"REPORT_MEMBER_OVERLAP_AUDIT": report}, ensure_ascii=False))
+
+
+async def print_report_member_access_change(token, guild_id, actor_id, expected_names):
+    import json
+    report = await remove_report_member_overlaps(token, guild_id, actor_id, expected_names)
+    print(json.dumps({"REPORT_MEMBER_ACCESS_CHANGE": report}, ensure_ascii=False))

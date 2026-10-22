@@ -39,6 +39,8 @@ def main():
     modes.add_argument("--check", action="store_true", help="Validate startup without connecting to Discord")
     modes.add_argument("--inspect-setup", type=int, metavar="SERVER_ID",
                         help="Read-only live setup report; does not connect a gateway")
+    modes.add_argument("--audit-permissions", type=int, metavar="SERVER_ID",
+                        help="Read-only inventory of server roles, hierarchy, and channel overwrites")
     parser.add_argument("--as-member", type=int, metavar="MEMBER_ID",
                         help="Verify this requesting server manager before an operator report")
     modes.add_argument("--apply-setup", metavar="JSON",
@@ -61,6 +63,12 @@ def main():
             parser.error("--inspect-setup requires --as-member")
         from .setup_operator import report_setup
         asyncio.run(report_setup(token, args.inspect_setup, args.as_member))
+        return
+    if args.audit_permissions:
+        if not args.as_member:
+            parser.error("--audit-permissions requires --as-member")
+        from .permission_audit import print_permission_audit
+        asyncio.run(print_permission_audit(token, settings, args.audit_permissions, args.as_member))
         return
     if args.apply_setup:
         from .setup_operator import apply_setup

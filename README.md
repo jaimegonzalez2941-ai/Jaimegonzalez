@@ -81,6 +81,12 @@ These are local operator tools, not authenticated website endpoints; never expos
 a public API. They never change Discord permissions or assign roles to players, and require no token
 in their arguments.
 
+`uv run python -m scoutbot --audit-permissions SERVER_ID --as-member MANAGER_ID` performs a
+read-only inventory of every live server role permission and explicit channel override, checks
+saved tier roles and the bot's configured staff/recap access, and verifies that the requesting
+human manager currently has Manage Server. It does not enumerate guild members, read chat messages
+or edit Discord permissions. Review audit findings before making any server changes.
+
 - `DISCORD_TOKEN` must be saved as a Replit Secret. Do not put it in source, configuration, or Discord messages.
 - For full automatic recap reading, open the **Bot** page of this bot's application in the [Discord Developer Portal](https://discord.com/developers/applications) and enable **Message Content Intent**. Grant this bot Message Content Intent as a privileged gateway intent, then restart it. Without this, Discord rejects the bot's gateway connection.
 - Click **Run** for the **Scout Discord Bot** workflow. When it connects, the workflow log prints a bot-invite link. Open that link to add V2 to your server with the requested channel, message, embed, history, and role permissions.

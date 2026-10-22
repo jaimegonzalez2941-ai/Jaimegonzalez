@@ -1,8 +1,13 @@
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import discord
 
 from scoutbot.database import Database
 from scoutbot.domain import STAGES
+from scoutbot.permission_audit import summarize_overwrites, true_permissions
 from scoutbot.setup_operator import persist_setup, validate_manifest
 
 
@@ -58,3 +63,31 @@ class SetupOperatorTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.assertRaises(ValueError):
                 validate_manifest(invalid)
+
+    def test_role_and_channel_overwrite_audit_lists_grants_denials_and_unresolved_targets(self):
+        manager = Mock(spec=discord.Role)
+        manager.id, manager.name = 10, "Coach"
+        member = Mock(spec=discord.Member)
+        member.id, member.display_name = 20, "Player"
+        unresolved = discord.Object(id=30, type=discord.abc.User)
+        role_overwrite = discord.PermissionOverwrite(view_channel=True, manage_messages=True)
+        member_overwrite = discord.PermissionOverwrite(view_channel=False, send_messages=True)
+        channel = SimpleNamespace(overwrites={
+            manager: role_overwrite, member: member_overwrite,
+            unresolved: discord.PermissionOverwrite(view_channel=True),
+        })
+        result = summarize_overwrites(channel)
+        self.assertEqual(result[0]["name"], "Coach")
+        self.assertIn("view_channel", result[0]["allows"])
+        self.assertIn("manage_messages", result[0]["allows"])
+        self.assertIn("view_channel", result[1]["denies"])
+        self.assertIn("send_messages", result[1]["allows"])
+        self.assertEqual(result[2]["type"], "uncached-member")
+        self.assertEqual(result[2]["id"], "30")
+        self.assertIn("administrator", true_permissions(discord.Permissions(administrator=True)))
+
+    def test_role_permission_inventory_is_read_only_and_comprehensive(self):
+        perms = discord.Permissions.none()
+        perms.manage_guild = True
+        perms.view_audit_log = True
+        self.assertEqual(true_permissions(perms), ["manage_guild", "view_audit_log"])

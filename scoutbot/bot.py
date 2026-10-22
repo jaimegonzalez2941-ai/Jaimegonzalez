@@ -1,8 +1,7 @@
 """Bot lifecycle and event handling."""
 
-import logging
-
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 
 import discord
@@ -92,21 +91,21 @@ class ScoutBot(commands.Bot):
 
     async def close(self):
         try:
-            try:
-                await self.web_bridge.close()
-            except Exception:
-                logger.exception("The website bridge did not close cleanly.")
+            worker = self.notification_worker.get_task()
+            if worker and not worker.done():
+                self.notification_worker.cancel()
+                try:
+                    await worker
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    logger.exception("The scheduled worker failed while shutting down.")
         finally:
             try:
-                worker = self.notification_worker.get_task()
-                if worker and not worker.done():
-                    self.notification_worker.cancel()
-                    try:
-                        await worker
-                    except asyncio.CancelledError:
-                        pass
-                    except Exception:
-                        logger.exception("The scheduled worker failed while shutting down.")
+                try:
+                    await self.web_bridge.close()
+                except Exception:
+                    logger.exception("The website bridge did not close cleanly.")
             finally:
                 try:
                     await super().close()

@@ -1,0 +1,1 @@
+- [Image-only recap policy](image-only-recaps.md) — leaderboard images are not a trusted source of player stats; require explicit text rows.

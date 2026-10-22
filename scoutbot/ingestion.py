@@ -20,6 +20,8 @@ async def import_message(bot, message: discord.Message, actor: int) -> tuple[boo
         if item.description:
             texts.append(item.description)
         texts.extend(field.value for field in item.fields)
+    # Deliberately do not OCR attachments or embed images: only explicit text rows
+    # are trusted as player statistics.
     players = parse_recaps(texts)
     inserted = await bot.db.ingest(
         message.guild.id, message.id, message.channel.id,

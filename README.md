@@ -14,13 +14,17 @@ A continuously running Discord bot for private player scouting, recruitment role
 
 ## Trusted recap format
 
-One player per line, in message content, an embed description, or embed field values:
+V2 reads text from a trusted message's content, embed description, and embed field values. It does not read attached or embedded images. The configured Friday recap posts show player statistics only in a leaderboard image, so those posts are intentionally rejected and do not create match records.
+
+For V2 to import a recap, include each player's statistics as text, one player per line:
 
 ```
 EAHandle | Rating: 8.4 | Goals: 2 | Assists: 1 | Pass Acc: 88% | Tackles: 3
 ```
 
-Metric labels are explicit: `Rating`, `Goals`, `Assists`, `Pass Acc` (or `Passing Acc` / `Passing Accuracy`), and `Tackles`. At least one labeled metric is required. Omitted values remain **unreported**, never fabricated as zero. A bad/unknown statistic, duplicate player, or unsupported player row rejects that recap as a unit; `/scout status` shows rejected message IDs and reasons. Correct the source format and use `/scout ingest` with the message ID to retry. Imported messages are immutable and duplicate imports are ignored.
+The row must begin with the player's EA handle, followed by pipe-separated `Label: value` fields. Labels are case-insensitive: `Rating`, `Goals`, `Assists`, `Pass Acc` (or `Passing Acc` / `Passing Accuracy`), and `Tackles`. At least one labeled statistic is required. Counts must be whole numbers; passing accuracy may include `%`. Omitted values remain **unreported**, never fabricated as zero. A malformed row, unknown statistic, or duplicate player rejects the entire recap; `/scout status` shows rejected message IDs and reasons. Correct the source format and use `/scout ingest` with the message ID to retry. Imported messages are immutable and duplicate imports are ignored.
+
+For example, a post containing `Club · Cup / Playoff match · Loss 1–5`, a date, and `Current leaderboards` with the player rows only in its image is not importable. Include the player rows as text in the message or embed to make it eligible.
 
 Match ratings are objective input; the scouting no-7 rule does not alter match data. Match records use Discord's source message timestamp, not an independently verified match time. Linking a player after a recap has already been imported makes earlier matching records visible.
 

@@ -70,6 +70,17 @@ class ParserTests(unittest.TestCase):
     def test_multiple_rows_and_embed_fragments(self):
         self.assertEqual(len(parse_recaps(["Match recap\nA | Goals: 2", "B | Tackles: 4"])), 2)
 
+    def test_real_friday_recap_with_image_only_leaderboard_is_rejected(self):
+        # The source message has this text, while its player rows are only in an image.
+        # V2 must not infer or fabricate player stats from the match summary.
+        texts = [
+            "Club · Cup / Playoff match · Loss 1–5",
+            "• October 17, 2026 9:26 PM",
+            "Current leaderboards",
+        ]
+        with self.assertRaises(RecapFormatError):
+            parse_recaps(texts)
+
     def test_unsupported_invalid_duplicate_rows_reject_entire_recap(self):
         for lines in (
             ["No structured statistics"], ["A | 8.4 | 2"],

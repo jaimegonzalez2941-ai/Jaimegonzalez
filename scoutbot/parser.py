@@ -3,6 +3,7 @@
 Supported row:
 EAHandle | Rating: 8.4 | Goals: 2 | Assists: 1 | Pass Acc: 88% | Tackles: 3
 Rows may be in embed descriptions, field values, or message content.
+Image-only leaderboards are intentionally unsupported; their statistics remain unreported.
 """
 
 from dataclasses import asdict, dataclass

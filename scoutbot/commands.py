@@ -300,7 +300,8 @@ class ScoutCommands(app_commands.Group):
             name="Supported recap row",
             value="`EAHandle | Rating: 8.4 | Goals: 2 | Assists: 1 | Pass Acc: 88% | Tackles: 3`\n"
                   "Use one player per line in message content, an embed description, or field values. "
-                  "At least one labeled metric is required. Missing metrics remain unreported.",
+                  "At least one labeled metric is required. Missing metrics remain unreported. "
+                  "Images aren't read.",
             inline=False,
         )
         result.add_field(
